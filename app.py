@@ -6,6 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 import numpy as np
 from io import BytesIO
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+import seaborn as sns
 
 # Configuração da página
 st.set_page_config(
@@ -15,13 +18,13 @@ st.set_page_config(
 )
 
 st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
-st.markdown("**Monitoramento do sistema de compostagem com minhocas**")
+st.markdown("**Cálculo de créditos de carbono baseado no modelo de emissões para resíduos orgânicos**")
 
 # URL do Excel no GitHub
 URL_EXCEL = "https://github.com/loopvinyl/vermicompostagem-ribeirao-preto/raw/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
-# FUNÇÕES DE COTAÇÃO DO CARBONO
+# FUNÇÕES DE COTAÇÃO DO CARBONO (MANTIDAS)
 # =============================================================================
 
 def obter_cotacao_carbono_investing():
@@ -179,8 +182,124 @@ def exibir_cotacao_carbono():
     )
 
 # =============================================================================
-# FUNÇÕES DE CARREGAMENTO E CÁLCULO
+# FUNÇÕES DE CÁLCULO BASEADAS NO SCRIPT FORNECIDO
 # =============================================================================
+
+def calcular_emissoes_aterro_escolas(residuo_kg, umidade=0.85, temperatura=25, doc=0.15, dias_simulacao=365*20):
+    """
+    Calcula emissões de aterro para resíduos de escolas baseado no script fornecido
+    """
+    # Parâmetros fixos do script
+    MCF = 1
+    F = 0.5
+    OX = 0.1
+    Ri = 0.0
+    k_ano = 0.06
+    
+    # Cálculo do DOCf baseado na temperatura
+    docf_calc = 0.0147 * temperatura + 0.28
+    
+    # Potencial de CH4 por kg de resíduo
+    potencial_CH4_por_kg = doc * docf_calc * MCF * F * (16/12) * (1 - Ri) * (1 - OX)
+    potencial_CH4_total = residuo_kg * potencial_CH4_por_kg
+    
+    # Emissões de CH4 ao longo do tempo (modelo de decaimento)
+    t = np.arange(1, dias_simulacao + 1, dtype=float)
+    kernel_ch4 = np.exp(-k_ano * (t - 1) / 365.0) - np.exp(-k_ano * t / 365.0)
+    emissoes_CH4 = potencial_CH4_total * kernel_ch4
+    
+    # Emissões de N2O (simplificado)
+    fator_umid = (1 - umidade) / (1 - 0.55)
+    E_medio = 2.0  # Valor médio para resíduos orgânicos
+    E_medio_ajust = E_medio * fator_umid
+    emissao_diaria_N2O = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
+    
+    # Perfil temporal do N2O
+    PERFIL_N2O = {1: 0.10, 2: 0.30, 3: 0.40, 4: 0.15, 5: 0.05}
+    kernel_n2o = np.array([PERFIL_N2O.get(d, 0) for d in range(1, 6)], dtype=float)
+    emissoes_N2O = emissao_diaria_N2O * kernel_n2o.sum()
+    
+    # GWP (IPCC AR6)
+    GWP_CH4_20 = 79.7
+    GWP_N2O_20 = 273
+    
+    # Converter para tCO₂eq
+    total_ch4_tco2eq = (emissoes_CH4.sum() * GWP_CH4_20) / 1000
+    total_n2o_tco2eq = (emissoes_N2O * GWP_N2O_20) / 1000
+    
+    total_aterro_tco2eq = total_ch4_tco2eq + total_n2o_tco2eq
+    
+    return total_aterro_tco2eq
+
+def calcular_emissoes_compostagem_escolas(residuo_kg, umidade=0.85, dias_compostagem=50):
+    """
+    Calcula emissões de compostagem para resíduos de escolas
+    """
+    # Parâmetros para resíduos orgânicos de escolas (similares aos do script)
+    TOC = 0.436  # Fração de carbono orgânico total
+    TN = 14.2 / 1000  # Fração de nitrogênio total
+    CH4_C_FRAC = 0.13 / 100  # Fração do TOC emitida como CH4-C
+    N2O_N_FRAC = 0.92 / 100  # Fração do TN emitida como N2O-N
+    
+    fracao_ms = 1 - umidade
+    
+    # Emissões totais
+    ch4_total = residuo_kg * (TOC * CH4_C_FRAC * (16/12) * fracao_ms)
+    n2o_total = residuo_kg * (TN * N2O_N_FRAC * (44/28) * fracao_ms)
+    
+    # GWP (IPCC AR6)
+    GWP_CH4_20 = 79.7
+    GWP_N2O_20 = 273
+    
+    # Converter para tCO₂eq
+    total_ch4_tco2eq = (ch4_total * GWP_CH4_20) / 1000
+    total_n2o_tco2eq = (n2o_total * GWP_N2O_20) / 1000
+    
+    total_compost_tco2eq = total_ch4_tco2eq + total_n2o_tco2eq
+    
+    return total_compost_tco2eq
+
+def calcular_emissoes_evitadas_reator(capacidade_litros, densidade_kg_l=0.5, umidade=0.85, temperatura=25):
+    """
+    Calcula emissões evitadas para um reator cheio usando a metodologia do script
+    """
+    residuo_kg = capacidade_litros * densidade_kg_l
+    
+    # Emissões do cenário base (aterro)
+    emissões_aterro = calcular_emissoes_aterro_escolas(residuo_kg, umidade, temperatura)
+    
+    # Emissões do cenário projeto (compostagem)
+    emissões_compostagem = calcular_emissoes_compostagem_escolas(residuo_kg, umidade)
+    
+    # Emissões evitadas
+    emissões_evitadas = emissões_aterro - emissões_compostagem
+    
+    return residuo_kg, emissões_evitadas
+
+# =============================================================================
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO
+# =============================================================================
+
+def inicializar_session_state():
+    if 'preco_carbono' not in st.session_state:
+        preco_carbono, moeda, contrato_info, sucesso, fonte = obter_cotacao_carbono()
+        st.session_state.preco_carbono = preco_carbono
+        st.session_state.moeda_carbono = moeda
+        st.session_state.fonte_cotacao = fonte
+        
+    if 'taxa_cambio' not in st.session_state:
+        preco_euro, moeda_real, sucesso_euro, fonte_euro = obter_cotacao_euro_real()
+        st.session_state.taxa_cambio = preco_euro
+        st.session_state.moeda_real = moeda_real
+        
+    if 'moeda_real' not in st.session_state:
+        st.session_state.moeda_real = "R$"
+    if 'cotacao_atualizada' not in st.session_state:
+        st.session_state.cotacao_atualizada = False
+    if 'mostrar_atualizacao' not in st.session_state:
+        st.session_state.mostrar_atualizacao = False
+    if 'cotacao_carregada' not in st.session_state:
+        st.session_state.cotacao_carregada = False
 
 @st.cache_data
 def carregar_dados_excel(url):
@@ -207,410 +326,394 @@ def carregar_dados_excel(url):
         st.error(f"❌ Erro ao carregar dados do Excel: {e}")
         return None, None
 
-def calcular_capacidade_sistema(df_reatores, escola_selecionada=None):
-    """Calcula a capacidade total do sistema baseado nos reatores"""
-    if escola_selecionada and escola_selecionada != "Todas":
-        reatores_filtrados = df_reatores[df_reatores['id_escola'] == escola_selecionada]
-    else:
-        reatores_filtrados = df_reatores
+def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5, umidade=0.85, temperatura=25):
+    """
+    Processa os reatores cheios e calcula emissões evitadas
+    """
+    # Filtrar reatores que já encheram
+    reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
     
-    # Calcular capacidade total (assumindo que cada reator tem capacidade padrão se não especificado)
-    if 'capacidade_litros' not in reatores_filtrados.columns:
-        # Se não houver coluna de capacidade, usar valor padrão de 100L por reator
-        capacidade_total = len(reatores_filtrados) * 100
-    else:
-        capacidade_total = reatores_filtrados['capacidade_litros'].sum()
+    if reatores_cheios.empty:
+        return pd.DataFrame(), 0, 0
     
-    return capacidade_total, len(reatores_filtrados)
-
-def calcular_residuo_processado(capacidade_total_litros, ciclos_ano, densidade_kg_l=0.5):
-    """Calcula a quantidade total de resíduo processado por ano"""
-    residuo_por_ciclo_kg = capacidade_total_litros * densidade_kg_l
-    residuo_total_kg = residuo_por_ciclo_kg * ciclos_ano
-    return residuo_total_kg
-
-def calcular_emissoes_evitadas(residuo_total_kg, fator_emissao_kgco2eq_kg=0.8):
-    """Calcula emissões evitadas baseado na quantidade de resíduo processado"""
-    emissões_evitadas_kgco2eq = residuo_total_kg * fator_emissao_kgco2eq_kg
-    emissões_evitadas_tco2eq = emissões_evitadas_kgco2eq / 1000
-    return emissões_evitadas_tco2eq
-
-# =============================================================================
-# INICIALIZAÇÃO DA SESSION STATE
-# =============================================================================
-
-def inicializar_session_state():
-    if 'preco_carbono' not in st.session_state:
-        preco_carbono, moeda, contrato_info, sucesso, fonte = obter_cotacao_carbono()
-        st.session_state.preco_carbono = preco_carbono
-        st.session_state.moeda_carbono = moeda
-        st.session_state.fonte_cotacao = fonte
+    # Calcular para cada reator
+    resultados = []
+    total_residuo = 0
+    total_emissoes_evitadas = 0
+    
+    for _, reator in reatores_cheios.iterrows():
+        capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 100
+        residuo_kg, emissoes_evitadas = calcular_emissoes_evitadas_reator(
+            capacidade, densidade_kg_l, umidade, temperatura
+        )
         
-    if 'taxa_cambio' not in st.session_state:
-        preco_euro, moeda_real, sucesso_euro, fonte_euro = obter_cotacao_euro_real()
-        st.session_state.taxa_cambio = preco_euro
-        st.session_state.moeda_real = moeda_real
+        resultados.append({
+            'id_reator': reator['id_reator'],
+            'id_escola': reator['id_escola'],
+            'data_encheu': reator['data_encheu'],
+            'capacidade_litros': capacidade,
+            'residuo_kg': residuo_kg,
+            'emissoes_evitadas_tco2eq': emissoes_evitadas
+        })
         
-    if 'moeda_real' not in st.session_state:
-        st.session_state.moeda_real = "R$"
-    if 'cotacao_atualizada' not in st.session_state:
-        st.session_state.cotacao_atualizada = False
-    if 'mostrar_atualizacao' not in st.session_state:
-        st.session_state.mostrar_atualizacao = False
-    if 'cotacao_carregada' not in st.session_state:
-        st.session_state.cotacao_carregada = False
+        total_residuo += residuo_kg
+        total_emissoes_evitadas += emissoes_evitadas
+    
+    df_resultados = pd.DataFrame(resultados)
+    
+    # Juntar com informações da escola
+    df_resultados = df_resultados.merge(
+        df_escolas[['id_escola', 'nome_escola']], 
+        on='id_escola', 
+        how='left'
+    )
+    
+    return df_resultados, total_residuo, total_emissoes_evitadas
 
-inicializar_session_state()
+def criar_serie_temporal(df_reatores_processados):
+    """
+    Cria série temporal acumulada das emissões evitadas
+    """
+    if df_reatores_processados.empty:
+        return pd.DataFrame()
+    
+    # Agrupar por mês
+    df_reatores_processados['mes_ano'] = df_reatores_processados['data_encheu'].dt.to_period('M')
+    
+    serie_mensal = df_reatores_processados.groupby('mes_ano').agg({
+        'emissoes_evitadas_tco2eq': 'sum'
+    }).reset_index()
+    
+    serie_mensal['mes_ano'] = serie_mensal['mes_ano'].dt.to_timestamp()
+    serie_mensal['emissoes_acumuladas'] = serie_mensal['emissoes_evitadas_tco2eq'].cumsum()
+    
+    return serie_mensal
 
 # =============================================================================
-# CARREGAMENTO DOS DADOS DO EXCEL
+# FUNÇÕES DE FORMATAÇÃO
 # =============================================================================
 
-# Carregar dados do Excel
-df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
+def formatar_br(numero):
+    """Formata números no padrão brasileiro"""
+    if pd.isna(numero):
+        return "N/A"
+    numero = round(numero, 2)
+    return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-if df_escolas is None or df_reatores is None:
-    st.error("""
-    ❌ **Não foi possível carregar os dados do Excel. Verifique:**
-    - A URL do arquivo está correta
-    - As abas 'escolas' e 'reatores' existem
-    - O arquivo não está corrompido
-    """)
-    st.stop()
+def br_format(x, pos):
+    """Formatação para eixos de gráficos"""
+    if x == 0:
+        return "0"
+    if abs(x) < 0.01:
+        return f"{x:.1e}".replace(".", ",")
+    if abs(x) >= 1000:
+        return f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # =============================================================================
 # INTERFACE PRINCIPAL
 # =============================================================================
 
-# Exibir cotação de carbono
+# Inicializar e carregar
+inicializar_session_state()
+df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
+
+if df_escolas is None or df_reatores is None:
+    st.error("Não foi possível carregar os dados do Excel")
+    st.stop()
+
+# Sidebar
 exibir_cotacao_carbono()
 
-# Sidebar com configurações
 with st.sidebar:
-    st.header("⚙️ Configuração do Sistema")
+    st.header("⚙️ Parâmetros de Cálculo")
     
-    # Seleção da escola
-    escolas_options = ["Todas"] + df_escolas['id_escola'].tolist()
-    escola_selecionada = st.selectbox(
-        "Selecionar Escola",
-        options=escolas_options,
-        help="Selecione uma escola específica ou 'Todas' para ver o consolidado"
-    )
-    
-    # Mostrar informações da escola selecionada
-    if escola_selecionada != "Todas":
-        escola_info = df_escolas[df_escolas['id_escola'] == escola_selecionada].iloc[0]
-        st.info(f"""
-        **🏫 {escola_info['nome_escola']}**
-        - Status: {escola_info.get('status', 'N/A')}
-        - Implantação: {escola_info.get('data_implantacao', 'N/A')}
-        """)
-    
-    # Parâmetros do cálculo
-    st.subheader("📊 Parâmetros de Cálculo")
-    
-    ciclos_ano = st.slider(
-        "Ciclos completos por ano",
-        min_value=1,
-        max_value=12,
-        value=6,
-        step=1,
-        help="Número de vezes que os reatores são completamente processados por ano"
-    )
-    
+    # Parâmetros técnicos
     densidade_residuo = st.slider(
         "Densidade do resíduo (kg/litro)",
         min_value=0.3,
         max_value=0.8,
         value=0.5,
         step=0.05,
-        help="Densidade média dos resíduos de compostagem"
+        help="Densidade média dos resíduos orgânicos"
     )
     
-    fator_emissao = st.slider(
-        "Fator de emissão evitada (kg CO₂eq/kg resíduo)",
-        min_value=0.5,
-        max_value=1.5,
-        value=0.8,
-        step=0.1,
-        help="Quanto de emissão é evitada por kg de resíduo compostado vs aterro"
-    )
-    
-    anos_projecao = st.slider(
-        "Anos de projeção",
-        min_value=1,
-        max_value=20,
-        value=5,
+    umidade = st.slider(
+        "Umidade do resíduo (%)",
+        min_value=70,
+        max_value=95,
+        value=85,
         step=1,
-        help="Período para projeção dos créditos de carbono"
+        help="Teor de umidade dos resíduos"
+    ) / 100.0
+    
+    temperatura = st.slider(
+        "Temperatura média (°C)",
+        min_value=15,
+        max_value=35,
+        value=25,
+        step=1,
+        help="Temperatura ambiente para cálculo das emissões"
     )
+    
+    # Seleção de escola
+    escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
+    escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
+    
+    if st.button("🧮 Calcular Créditos de Carbono", type="primary"):
+        st.session_state.calcular_creditos = True
 
 # =============================================================================
-# CÁLCULOS PRINCIPAIS
+# CÁLCULOS E EXIBIÇÃO
 # =============================================================================
 
-# Calcular capacidade do sistema
-capacidade_total, num_reatores = calcular_capacidade_sistema(df_reatores, escola_selecionada)
+if st.session_state.get('calcular_creditos', False):
+    with st.spinner('Calculando créditos de carbono...'):
+        # Filtrar dados conforme seleção
+        if escola_selecionada != "Todas as escolas":
+            reatores_filtrados = df_reatores[df_reatores['id_escola'] == escola_selecionada]
+            escolas_filtradas = df_escolas[df_escolas['id_escola'] == escola_selecionada]
+        else:
+            reatores_filtrados = df_reatores
+            escolas_filtradas = df_escolas
+        
+        # Processar reatores cheios
+        reatores_processados, total_residuo, total_emissoes = processar_reatores_cheios(
+            reatores_filtrados, escolas_filtradas, densidade_residuo, umidade, temperatura
+        )
+        
+        # Criar série temporal
+        serie_temporal = criar_serie_temporal(reatores_processados)
+        
+        # Calcular valores financeiros
+        preco_carbono_eur = st.session_state.preco_carbono
+        taxa_cambio = st.session_state.taxa_cambio
+        
+        valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
+        valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
+        
+        # =============================================================================
+        # EXIBIÇÃO DOS RESULTADOS
+        # =============================================================================
+        
+        st.header("📊 Créditos de Carbono Computados")
+        
+        # Métricas principais
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Reatores Processados",
+                f"{len(reatores_processados)}",
+                "Total de ciclos completos"
+            )
+        
+        with col2:
+            st.metric(
+                "Resíduo Processado",
+                f"{total_residuo:,.0f} kg",
+                f"{total_residuo/1000:.1f} ton"
+            )
+        
+        with col3:
+            st.metric(
+                "Emissões Evitadas",
+                f"{total_emissoes:.3f} tCO₂eq",
+                "Total acumulado"
+            )
+        
+        with col4:
+            st.metric(
+                "Valor dos Créditos",
+                f"R$ {valor_brl:,.2f}",
+                f"€ {valor_eur:,.2f}"
+            )
+        
+        # Tabela detalhada
+        if not reatores_processados.empty:
+            st.subheader("🧮 Detalhamento por Reator")
+            
+            colunas_detalhes = ['nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq']
+            df_detalhes = reatores_processados[colunas_detalhes].copy()
+            df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].round(1)
+            df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].round(4)
+            
+            st.dataframe(df_detalhes, use_container_width=True)
+        
+        # Série temporal
+        if not serie_temporal.empty:
+            st.subheader("📈 Evolução das Emissões Evitadas")
+            
+            fig = px.area(
+                serie_temporal, 
+                x='mes_ano', 
+                y='emissoes_acumuladas',
+                title='Acumulado de Emissões Evitadas ao Longo do Tempo'
+            )
+            fig.update_layout(
+                xaxis_title='Mês/Ano',
+                yaxis_title='Emissões Evitadas Acumuladas (tCO₂eq)'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Gráfico de comparação por escola
+        if not reatores_processados.empty and escola_selecionada == "Todas as escolas":
+            st.subheader("🏫 Comparação por Escola")
+            
+            emissoes_por_escola = reatores_processados.groupby('nome_escola').agg({
+                'emissoes_evitadas_tco2eq': 'sum',
+                'residuo_kg': 'sum'
+            }).reset_index()
+            
+            fig = px.bar(
+                emissoes_por_escola,
+                x='nome_escola',
+                y='emissoes_evitadas_tco2eq',
+                title='Emissões Evitadas por Escola',
+                labels={'emissoes_evitadas_tco2eq': 'Emissões Evitadas (tCO₂eq)', 'nome_escola': 'Escola'}
+            )
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Projeção futura
+        st.subheader("🔮 Projeção Futura")
+        
+        # Calcular capacidade total ativa
+        reatores_ativos = reatores_filtrados[reatores_filtrados['status_reator'] == 'Ativo']
+        capacidade_total = reatores_ativos['capacidade_litros'].sum() if 'capacidade_litros' in reatores_ativos.columns else len(reatores_ativos) * 100
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            ciclos_ano_projecao = st.slider("Ciclos/ano (projeção)", 1, 12, 6, key="proj_ciclos")
+        with col2:
+            anos_projecao = st.slider("Anos de projeção", 1, 10, 5, key="proj_anos")
+        
+        # Cálculo da projeção
+        residuo_anual_proj = capacidade_total * densidade_residuo * ciclos_ano_projecao
+        emissoes_anual_proj = 0
+        
+        # Calcular emissões anuais projetadas
+        if residuo_anual_proj > 0:
+            _, emissoes_anual_proj = calcular_emissoes_evitadas_reator(
+                capacidade_total * ciclos_ano_projecao, densidade_residuo, umidade, temperatura
+            )
+        
+        emissoes_total_proj = emissoes_anual_proj * anos_projecao
+        
+        valor_eur_proj = calcular_valor_creditos(emissoes_total_proj, preco_carbono_eur, "€")
+        valor_brl_proj = calcular_valor_creditos(emissoes_total_proj, preco_carbono_eur, "R$", taxa_cambio)
+        
+        # Exibir projeção
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Emissões Evitadas Projetadas",
+                f"{emissoes_total_proj:.3f} tCO₂eq",
+                f"{anos_projecao} anos"
+            )
+        with col2:
+            st.metric(
+                "Valor Projetado (€)",
+                f"€ {valor_eur_proj:,.2f}",
+                f"@ €{preco_carbono_eur:.2f}/tCO₂eq"
+            )
+        with col3:
+            st.metric(
+                "Valor Projetado (R$)",
+                f"R$ {valor_brl_proj:,.2f}",
+                f"@ R${preco_carbono_eur * taxa_cambio:.2f}/tCO₂eq"
+            )
+        
+        # =============================================================================
+        # DOWNLOAD E DETALHES
+        # =============================================================================
+        
+        st.subheader("📥 Exportação de Dados")
+        
+        if not reatores_processados.empty:
+            # Preparar dados para download
+            download_df = reatores_processados[[
+                'nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 
+                'residuo_kg', 'emissoes_evitadas_tco2eq'
+            ]].copy()
+            
+            csv = download_df.to_csv(index=False)
+            st.download_button(
+                label="📊 Download dos Créditos Computados",
+                data=csv,
+                file_name=f"creditos_carbono_escolas_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        # Detalhamento dos cálculos
+        with st.expander("🧮 Metodologia de Cálculo"):
+            st.markdown(f"""
+            **📊 Metodologia Baseada no Modelo Científico:**
+            
+            **1. Cenário Base (Aterro Sanitário):**
+            - Modelo de decaimento exponencial para emissões de CH4
+            - Emissões de N2O baseadas em fatores específicos
+            - Considera umidade, temperatura e DOC (Carbono Orgânico Degradável)
+            - Período de simulação: 20 anos
+            
+            **2. Cenário Projeto (Compostagem):**
+            - Emissões de CH4 e N2O durante o processo de compostagem
+            - Baseado em fatores de emissão específicos para resíduos orgânicos
+            - Período de compostagem: 50 dias
+            
+            **3. Emissões Evitadas:**
+            ```
+            Emissões Evitadas = Emissões_Aterro - Emissões_Compostagem
+            ```
+            
+            **4. Parâmetros Utilizados:**
+            - Densidade do resíduo: {densidade_residuo} kg/L
+            - Umidade: {umidade:.1%}
+            - Temperatura: {temperatura}°C
+            - DOC: 0.15 (valor padrão para resíduos orgânicos)
+            
+            **5. Valor dos Créditos:**
+            ```
+            Valor (€) = Emissões Evitadas (tCO₂eq) × Preço Carbono (€/tCO₂eq)
+                      = {total_emissoes:.3f} × €{preco_carbono_eur:.2f}
+                      = €{valor_eur:,.2f}
+            ```
+            
+            **🌍 Referências Científicas:**
+            - IPCC (2006) para metodologia de aterros
+            - Yang et al. (2017) para compostagem
+            - GWP do IPCC AR6 (CH4: 79.7, N2O: 273)
+            """)
 
-# Calcular resíduo processado
-residuo_anual_kg = calcular_residuo_processado(capacidade_total, ciclos_ano, densidade_residuo)
-residuo_anual_ton = residuo_anual_kg / 1000
-
-# Calcular emissões evitadas
-emissoes_evitadas_ano = calcular_emissoes_evitadas(residuo_anual_kg, fator_emissao)
-emissoes_totais_evitadas = emissoes_evitadas_ano * anos_projecao
-
-# Calcular valores financeiros
-preco_carbono_eur = st.session_state.preco_carbono
-taxa_cambio = st.session_state.taxa_cambio
-
-valor_eur = calcular_valor_creditos(emissoes_totais_evitadas, preco_carbono_eur, "€")
-valor_brl = calcular_valor_creditos(emissoes_totais_evitadas, preco_carbono_eur, "R$", taxa_cambio)
-
-# =============================================================================
-# EXIBIÇÃO DOS RESULTADOS
-# =============================================================================
-
-st.header("💰 Projeção de Créditos de Carbono")
-
-# Resumo do sistema
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Sistema de Reatores",
-        f"{num_reatores} reatores",
-        f"Capacidade: {capacidade_total:,}L"
-    )
-
-with col2:
-    st.metric(
-        "Resíduo Processado/Ano",
-        f"{residuo_anual_ton:.1f} ton",
-        f"{residuo_anual_kg:,.0f} kg"
-    )
-
-with col3:
-    st.metric(
-        "Emissões Evitadas/Ano",
-        f"{emissoes_evitadas_ano:.2f} tCO₂eq",
-        f"Fator: {fator_emissao} kg CO₂eq/kg"
-    )
-
-# Valor financeiro
-st.subheader("💵 Valor Financeiro dos Créditos")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Emissões Evitadas Totais",
-        f"{emissoes_totais_evitadas:.1f} tCO₂eq",
-        f"Em {anos_projecao} anos"
-    )
-
-with col2:
-    st.metric(
-        "Valor em Euros",
-        f"€ {valor_eur:,.2f}",
-        f"@ €{preco_carbono_eur:.2f}/tCO₂eq"
-    )
-
-with col3:
-    st.metric(
-        "Valor em Reais", 
-        f"R$ {valor_brl:,.2f}",
-        f"@ R${preco_carbono_eur * taxa_cambio:.2f}/tCO₂eq"
-    )
-
-# Detalhamento dos dados
-st.subheader("📋 Dados do Sistema")
-
-# Mostrar reatores
-if escola_selecionada != "Todas":
-    reatores_escola = df_reatores[df_reatores['id_escola'] == escola_selecionada]
 else:
-    reatores_escola = df_reatores
-
-# Juntar com nomes das escolas para display
-reatores_display = reatores_escola.merge(
-    df_escolas[['id_escola', 'nome_escola']], 
-    on='id_escola',
-    how='left'
-)
-
-# Selecionar colunas para mostrar
-colunas_mostrar = ['nome_escola', 'id_reator', 'status_reator', 'data_ativacao', 'data_encheu']
-if 'capacidade_litros' in reatores_display.columns:
-    colunas_mostrar.append('capacidade_litros')
-
-st.dataframe(reatores_display[colunas_mostrar], use_container_width=True)
-
-# Projeção anual
-st.subheader("📈 Projeção Anual de Receita")
-
-projecao_anual = []
-for ano in range(1, anos_projecao + 1):
-    emissoes_acumuladas = emissoes_evitadas_ano * ano
-    valor_eur_acumulado = calcular_valor_creditos(emissoes_acumuladas, preco_carbono_eur, "€")
-    valor_brl_acumulado = calcular_valor_creditos(emissoes_acumuladas, preco_carbono_eur, "R$", taxa_cambio)
-    
-    projecao_anual.append({
-        'Ano': ano,
-        'Emissões Evitadas Acumuladas (tCO₂eq)': emissoes_acumuladas,
-        'Valor Acumulado (€)': valor_eur_acumulado,
-        'Valor Acumulado (R$)': valor_brl_acumulado
-    })
-
-projecao_df = pd.DataFrame(projecao_anual)
-st.dataframe(projecao_df, use_container_width=True)
-
-# Gráfico de projeção
-fig = px.line(
-    projecao_df, 
-    x='Ano', 
-    y='Valor Acumulado (R$)',
-    title=f'Projeção de Receita com Créditos de Carbono - {anos_projecao} anos',
-    markers=True
-)
-fig.update_layout(
-    yaxis_title='Valor Acumulado (R$)',
-    xaxis_title='Ano'
-)
-st.plotly_chart(fig, use_container_width=True)
+    st.info("💡 Configure os parâmetros na barra lateral e clique em 'Calcular Créditos de Carbono' para ver os resultados.")
 
 # =============================================================================
-# DETALHAMENTO DOS CÁLCULOS
-# =============================================================================
-
-with st.expander("🧮 Detalhamento dos Cálculos"):
-    st.markdown(f"""
-    **📊 Metodologia de Cálculo:**
-    
-    **1. Capacidade do Sistema:**
-    ```
-    Capacidade Total (L) = Soma da capacidade de todos os reatores ativos
-    Reatores ativos: {num_reatores}
-    Capacidade total: {capacidade_total:,} litros
-    ```
-    
-    **2. Resíduo Processado:**
-    ```
-    Resíduo Anual (kg) = Capacidade Total (L) × Densidade (kg/L) × Ciclos/Ano
-                       = {capacidade_total:,} L × {densidade_residuo} kg/L × {ciclos_ano}
-                       = {residuo_anual_kg:,.0f} kg/ano = {residuo_anual_ton:.1f} ton/ano
-    ```
-    
-    **3. Emissões Evitadas:**
-    ```
-    Emissões Evitadas (tCO₂eq/ano) = Resíduo Anual (kg) × Fator Emissão (kg CO₂eq/kg) ÷ 1000
-                                   = {residuo_anual_kg:,.0f} kg × {fator_emissao} kg CO₂eq/kg ÷ 1000
-                                   = {emissoes_evitadas_ano:.2f} tCO₂eq/ano
-    ```
-    
-    **4. Valor dos Créditos:**
-    ```
-    Valor Total (€) = Emissões Totais Evitadas (tCO₂eq) × Preço Carbono (€/tCO₂eq)
-                    = {emissoes_totais_evitadas:.1f} tCO₂eq × €{preco_carbono_eur:.2f}/tCO₂eq
-                    = €{valor_eur:,.2f}
-                    
-    Valor Total (R$) = Valor (€) × Taxa Câmbio (R$/€)
-                     = €{valor_eur:,.2f} × R${taxa_cambio:.2f}/€
-                     = R${valor_brl:,.2f}
-    ```
-    
-    **📚 Pressupostos:**
-    - Cada reator completa {ciclos_ano} ciclos por ano
-    - Densidade do resíduo: {densidade_residuo} kg/L
-    - Fator de emissão evitada: {fator_emissao} kg CO₂eq/kg resíduo
-    - Projeção: {anos_projecao} anos
-    - Preço do carbono: €{preco_carbono_eur:.2f}/tCO₂eq ({st.session_state.fonte_cotacao})
-    - Câmbio: €1 = R${taxa_cambio:.2f}
-    """)
-
-# =============================================================================
-# DOWNLOAD E EXPORTAÇÃO
-# =============================================================================
-
-st.subheader("📥 Exportação de Dados")
-
-# Criar DataFrame para download
-download_df = pd.DataFrame({
-    'Ano': list(range(1, anos_projecao + 1)),
-    'Emissões_Evitadas_tCO2eq': [emissoes_evitadas_ano * ano for ano in range(1, anos_projecao + 1)],
-    'Valor_EUR': [calcular_valor_creditos(emissoes_evitadas_ano * ano, preco_carbono_eur, "€") for ano in range(1, anos_projecao + 1)],
-    'Valor_BRL': [calcular_valor_creditos(emissoes_evitadas_ano * ano, preco_carbono_eur, "R$", taxa_cambio) for ano in range(1, anos_projecao + 1)]
-})
-
-# Botão de download
-csv = download_df.to_csv(index=False)
-st.download_button(
-    label="📊 Download da Projeção (CSV)",
-    data=csv,
-    file_name=f"projecao_creditos_carbono_{datetime.now().strftime('%Y%m%d')}.csv",
-    mime="text/csv"
-)
-
-# =============================================================================
-# ATUALIZAÇÃO DA ESTRUTURA DO EXCEL
+# INFORMAÇÕES GERAIS
 # =============================================================================
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🔄 Atualizar Estrutura do Excel")
+st.sidebar.subheader("📝 Sobre o Cálculo")
 
-with st.sidebar.expander("📝 Modelo Recomendado"):
+with st.sidebar.expander("ℹ️ Informações"):
     st.markdown("""
-    **Para melhor funcionamento, seu Excel deve ter:**
+    **🎯 Objetivo:**
+    Calcular créditos de carbono baseado na compostagem de resíduos orgânicos nas escolas
     
-    **Aba 'escolas':**
-    - id_escola
-    - nome_escola  
-    - data_implantacao
-    - status
-    - ultima_visita
+    **📊 Metodologia:**
+    - Comparação entre cenário base (aterro) e cenário projeto (compostagem)
+    - Cálculo baseado em modelos científicos validados
+    - Considera características específicas dos resíduos escolares
     
-    **Aba 'reatores':**
-    - id_reator
-    - id_escola
-    - capacidade_litros
-    - status_reator
-    - data_ativacao
-    - data_encheu
-    - data_colheita
-    
-    **💡 Dica:** Adicione a coluna 'capacidade_litros' na aba reatores para cálculos mais precisos!
+    **💡 Como usar:**
+    1. Selecione a escola ou "Todas as escolas"
+    2. Ajuste os parâmetros técnicos conforme necessário
+    3. Clique em "Calcular Créditos de Carbono"
+    4. Veja os resultados e faça o download dos dados
     """)
-    
-    # Criar modelo para download
-    def criar_modelo_excel():
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # ABA escolas
-            df_modelo_escolas = pd.DataFrame(columns=[
-                'id_escola', 'nome_escola', 'data_implantacao', 'status', 
-                'ultima_visita', 'observacoes'
-            ])
-            df_modelo_escolas.to_excel(writer, sheet_name='escolas', index=False)
-            
-            # ABA reatores
-            df_modelo_reatores = pd.DataFrame(columns=[
-                'id_reator', 'id_escola', 'capacidade_litros', 'status_reator',
-                'data_ativacao', 'data_encheu', 'data_colheita', 'observacoes'
-            ])
-            df_modelo_reatores.to_excel(writer, sheet_name='reatores', index=False)
-        
-        return output.getvalue()
-
-    modelo_excel = criar_modelo_excel()
-    st.download_button(
-        label="⬇️ Baixar Modelo do Excel",
-        data=modelo_excel,
-        file_name="modelo_vermicompostagem_atualizado.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
 
 st.markdown("---")
 st.markdown("""
 **♻️ Sistema de Vermicompostagem - Ribeirão Preto/SP**  
-*Cálculo de créditos de carbono baseado na capacidade real dos sistemas das escolas*
+*Cálculo científico de créditos de carbono baseado na compostagem de resíduos orgânicos*
 """)
