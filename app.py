@@ -21,7 +21,7 @@ st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo de emissões para resíduos orgânicos**")
 
 # URL do Excel no GitHub
-URL_EXCEL = "https://github.com/loopvinyl/vermicompostagem-ribeirao-preto/raw/main/dados_vermicompostagem.xlsx"
+URL_EXCEL = "https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/blob/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
 # FUNÇÕES DE COTAÇÃO DO CARBONO (MANTIDAS)
