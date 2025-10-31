@@ -9,12 +9,12 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Vermicompostagem - Ribeirão Preto",
+    page_title="Compostagem - Ribeirão Preto",
     page_icon="♻️",
     layout="wide"
 )
 
-st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
+st.title("♻️ Compostagem nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo de emissões para resíduos orgânicos**")
 
 # URL CORRIGIDA do Excel no GitHub
@@ -355,7 +355,7 @@ with st.sidebar:
 # EXIBIÇÃO DOS DADOS E CÁLCULOS
 # =============================================================================
 
-st.header("📊 Dashboard de Vermicompostagem")
+st.header("📊 Dashboard de Compostagem com minhocas")
 
 # Métricas gerais
 col1, col2, col3, col4 = st.columns(4)
@@ -502,6 +502,6 @@ if st.button("🔄 Atualizar Dados do Excel"):
 
 st.markdown("---")
 st.markdown("""
-**♻️ Sistema de Vermicompostagem - Ribeirão Preto/SP**  
+**♻️ Sistema de Compostagem - Ribeirão Preto/SP**  
 *Dados carregados de: Controladoria-Compostagem-nas-Escolas*
 """)
