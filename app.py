@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
+st.title("♻️ Compostagem nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # =============================================================================
