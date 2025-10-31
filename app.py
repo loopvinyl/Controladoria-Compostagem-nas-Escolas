@@ -9,12 +9,12 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Compostagem - Ribeirão Preto",
+    page_title="Vermicompostagem - Ribeirão Preto",
     page_icon="♻️",
     layout="wide"
 )
 
-st.title("♻️ Compostagem nas Escolas de Ribeirão Preto")
+st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # URL do Excel no GitHub
@@ -304,10 +304,10 @@ def carregar_dados_excel(url):
 # FUNÇÕES DE CÁLCULO CIENTÍFICO (BASEADAS NO SCRIPT ANEXO)
 # =============================================================================
 
-def calcular_emissoes_evitadas_reator(capacidade_litros, densidade_kg_l=0.5):
+def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, densidade_kg_l=0.5):
     """
     Calcula emissões evitadas baseado no modelo científico adaptado para escolas
-    Baseado em: IPCC (2006), UNFCCC (2016), Yang et al. (2017), Wang et al. (2023)
+    Retorna um dicionário com todos os componentes do cálculo
     """
     # Massa de resíduos processada
     residuo_kg = capacidade_litros * densidade_kg_l
@@ -387,7 +387,38 @@ def calcular_emissoes_evitadas_reator(capacidade_litros, densidade_kg_l=0.5):
     # Emissões evitadas (t CO₂eq)
     emissões_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_vermi_kgco2eq) / 1000
     
-    return residuo_kg, emissões_evitadas_tco2eq
+    # Retornar todos os componentes do cálculo
+    return {
+        'residuo_kg': residuo_kg,
+        'emissoes_CH4_aterro': emissoes_CH4_aterro,
+        'emissoes_N2O_aterro': emissao_N2O_aterro,
+        'emissoes_CH4_vermi': emissoes_CH4_vermi,
+        'emissoes_N2O_vermi': emissoes_N2O_vermi,
+        'emissao_aterro_kgco2eq': emissao_aterro_kgco2eq,
+        'emissao_vermi_kgco2eq': emissao_vermi_kgco2eq,
+        'emissoes_evitadas_tco2eq': emissões_evitadas_tco2eq,
+        'parametros': {
+            'capacidade_litros': capacidade_litros,
+            'densidade_kg_l': densidade_kg_l,
+            'T': T,
+            'DOC': DOC,
+            'DOCf': DOCf,
+            'TOC_YANG': TOC_YANG,
+            'TN_YANG': TN_YANG,
+            'CH4_C_FRAC_YANG': CH4_C_FRAC_YANG,
+            'N2O_N_FRAC_YANG': N2O_N_FRAC_YANG,
+            'umidade': umidade,
+            'GWP_CH4_20': GWP_CH4_20,
+            'GWP_N2O_20': GWP_N2O_20
+        }
+    }
+
+def calcular_emissoes_evitadas_reator(capacidade_litros, densidade_kg_l=0.5):
+    """
+    Versão simplificada para uso geral
+    """
+    resultado = calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, densidade_kg_l)
+    return resultado['residuo_kg'], resultado['emissoes_evitadas_tco2eq']
 
 def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
     """
@@ -460,12 +491,23 @@ with st.sidebar:
     # Seleção de escola
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
+    
+    # Configuração do cálculo de exemplo
+    st.header("🧮 Cálculo de Exemplo")
+    capacidade_exemplo = st.slider(
+        "Capacidade do reator para exemplo (litros)",
+        min_value=50,
+        max_value=200,
+        value=100,
+        step=10,
+        help="Capacidade do reator para mostrar o cálculo detalhado"
+    )
 
 # =============================================================================
 # EXIBIÇÃO DOS DADOS E CÁLCULOS
 # =============================================================================
 
-st.header("📊 Dashboard de Compostagem com minhocas")
+st.header("📊 Dashboard de Vermicompostagem")
 
 # Métricas gerais
 col1, col2, col3, col4 = st.columns(4)
@@ -505,7 +547,155 @@ taxa_cambio = st.session_state.taxa_cambio
 valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
 
-# Exibir resultados financeiros
+# =============================================================================
+# SEÇÃO DE CÁLCULO DETALHADO
+# =============================================================================
+
+st.header("🧮 Detalhamento do Cálculo")
+
+# Calcular exemplo detalhado
+resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade_exemplo, densidade_residuo)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("📋 Parâmetros do Cálculo")
+    st.write(f"**Capacidade do reator:** {formatar_br(capacidade_exemplo, 0)} L")
+    st.write(f"**Densidade do resíduo:** {formatar_br(densidade_residuo, 2)} kg/L")
+    st.write(f"**Massa de resíduos:** {formatar_br(resultado_detalhado['residuo_kg'], 1)} kg")
+    st.write(f"**Umidade:** {formatar_br(resultado_detalhado['parametros']['umidade'] * 100, 0)}%")
+    st.write(f"**Temperatura:** {formatar_br(resultado_detalhado['parametros']['T'], 0)}°C")
+
+with col2:
+    st.subheader("📊 Resultado do Cálculo")
+    st.metric(
+        "Emissões Evitadas", 
+        formatar_tco2eq(resultado_detalhado['emissoes_evitadas_tco2eq']),
+        help="Emissões evitadas por reator de exemplo"
+    )
+    
+    # Valor financeiro do exemplo
+    valor_exemplo_eur = calcular_valor_creditos(
+        resultado_detalhado['emissoes_evitadas_tco2eq'], 
+        preco_carbono_eur, 
+        "€"
+    )
+    valor_exemplo_brl = calcular_valor_creditos(
+        resultado_detalhado['emissoes_evitadas_tco2eq'], 
+        preco_carbono_eur, 
+        "R$", 
+        taxa_cambio
+    )
+    
+    st.metric(
+        "Valor dos Créditos", 
+        formatar_moeda_br(valor_exemplo_brl),
+        help=f"Valor em Reais (€ {formatar_br(valor_exemplo_eur, 2)})"
+    )
+
+# Expandir para ver cálculo completo
+with st.expander("🔍 Ver Cálculo Completo Passo a Passo"):
+    st.subheader("📝 Cálculo Detalhado das Emissões")
+    
+    # Parâmetros científicos
+    st.write("**Parâmetros Científicos Utilizados:**")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**Aterro (IPCC):**")
+        st.write(f"- DOC: {formatar_br(resultado_detalhado['parametros']['DOC'], 3)}")
+        st.write(f"- DOCf: {formatar_br(resultado_detalhado['parametros']['DOCf'], 3)}")
+        st.write(f"- MCF: {formatar_br(1, 0)}")
+        st.write(f"- F: {formatar_br(0.5, 1)}")
+    
+    with col2:
+        st.write("**Vermicompostagem (Yang):**")
+        st.write(f"- TOC: {formatar_br(resultado_detalhado['parametros']['TOC_YANG'], 3)}")
+        st.write(f"- TN: {formatar_br(resultado_detalhado['parametros']['TN_YANG'], 4)}")
+        st.write(f"- CH4-C/TOC: {formatar_br(resultado_detalhado['parametros']['CH4_C_FRAC_YANG'] * 100, 2)}%")
+        st.write(f"- N2O-N/TN: {formatar_br(resultado_detalhado['parametros']['N2O_N_FRAC_YANG'] * 100, 2)}%")
+    
+    with col3:
+        st.write("**GWP (IPCC AR6):**")
+        st.write(f"- CH₄: {formatar_br(resultado_detalhado['parametros']['GWP_CH4_20'], 0)}")
+        st.write(f"- N₂O: {formatar_br(resultado_detalhado['parametros']['GWP_N2O_20'], 0)}")
+    
+    # Cálculo do aterro
+    st.subheader("🏭 Emissões do Aterro Sanitário (Cenário Base)")
+    
+    st.write("**Metano (CH₄):**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    CH_{{4\text{{aterro}}}} &= \text{{Resíduo}} \times DOC \times DOC_f \times MCF \times F \times \frac{{16}}{{12}} \times (1-R_i) \times (1-OX) \\
+    &= {formatar_br(resultado_detalhado['residuo_kg'], 1)} \times {formatar_br(resultado_detalhado['parametros']['DOC'], 3)} \times {formatar_br(resultado_detalhado['parametros']['DOCf'], 3)} \times 1 \times 0,5 \times 1,333 \times 1 \times 0,9 \\
+    &= {formatar_br(resultado_detalhado['emissoes_CH4_aterro'], 3)} \text{{ kg CH}}_4
+    \end{{aligned}}
+    """)
+    
+    st.write("**Óxido Nitroso (N₂O):**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    N_2O_{{aterro}} &= \text{{Resíduo}} \times E_{{medio}} \times \frac{{44}}{{28}} \div 1.000.000 \\
+    &= {formatar_br(resultado_detalhado['residuo_kg'], 1)} \times 0,69 \times 1,571 \div 1.000.000 \\
+    &= {formatar_br(resultado_detalhado['emissoes_N2O_aterro'], 6)} \text{{ kg N}}_2\text{{O}}
+    \end{{aligned}}
+    """)
+    
+    st.write("**Total Aterro em CO₂eq:**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    CO_{{2eq\text{{aterro}}}} &= (CH_4 \times GWP_{{CH_4}}) + (N_2O \times GWP_{{N_2O}}) \\
+    &= ({formatar_br(resultado_detalhado['emissoes_CH4_aterro'], 3)} \times {formatar_br(resultado_detalhado['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(resultado_detalhado['emissoes_N2O_aterro'], 6)} \times {formatar_br(resultado_detalhado['parametros']['GWP_N2O_20'], 0)}) \\
+    &= {formatar_br(resultado_detalhado['emissoes_CH4_aterro'] * resultado_detalhado['parametros']['GWP_CH4_20'], 1)} + {formatar_br(resultado_detalhado['emissoes_N2O_aterro'] * resultado_detalhado['parametros']['GWP_N2O_20'], 3)} \\
+    &= {formatar_br(resultado_detalhado['emissao_aterro_kgco2eq'], 1)} \text{{ kg CO}}_2\text{{eq}}
+    \end{{aligned}}
+    """)
+    
+    # Cálculo da vermicompostagem
+    st.subheader("♻️ Emissões da Vermicompostagem (Cenário Projeto)")
+    
+    st.write("**Metano (CH₄):**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    CH_{{4\text{{vermi}}}} &= \text{{Resíduo}} \times TOC \times \frac{{CH_4C}}{{TOC}} \times \frac{{16}}{{12}} \times (1-\text{{umidade}}) \\
+    &= {formatar_br(resultado_detalhado['residuo_kg'], 1)} \times {formatar_br(resultado_detalhado['parametros']['TOC_YANG'], 3)} \times {formatar_br(resultado_detalhado['parametros']['CH4_C_FRAC_YANG'], 4)} \times 1,333 \times {formatar_br(1 - resultado_detalhado['parametros']['umidade'], 2)} \\
+    &= {formatar_br(resultado_detalhado['emissoes_CH4_vermi'], 5)} \text{{ kg CH}}_4
+    \end{{aligned}}
+    """)
+    
+    st.write("**Óxido Nitroso (N₂O):**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    N_2O_{{vermi}} &= \text{{Resíduo}} \times TN \times \frac{{N_2ON}}{{TN}} \times \frac{{44}}{{28}} \times (1-\text{{umidade}}) \\
+    &= {formatar_br(resultado_detalhado['residuo_kg'], 1)} \times {formatar_br(resultado_detalhado['parametros']['TN_YANG'], 4)} \times {formatar_br(resultado_detalhado['parametros']['N2O_N_FRAC_YANG'], 4)} \times 1,571 \times {formatar_br(1 - resultado_detalhado['parametros']['umidade'], 2)} \\
+    &= {formatar_br(resultado_detalhado['emissoes_N2O_vermi'], 5)} \text{{ kg N}}_2\text{{O}}
+    \end{{aligned}}
+    """)
+    
+    st.write("**Total Vermicompostagem em CO₂eq:**")
+    st.latex(rf"""
+    \begin{{aligned}}
+    CO_{{2eq\text{{vermi}}}} &= (CH_4 \times GWP_{{CH_4}}) + (N_2O \times GWP_{{N_2O}}) \\
+    &= ({formatar_br(resultado_detalhado['emissoes_CH4_vermi'], 5)} \times {formatar_br(resultado_detalhado['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(resultado_detalhado['emissoes_N2O_vermi'], 5)} \times {formatar_br(resultado_detalhado['parametros']['GWP_N2O_20'], 0)}) \\
+    &= {formatar_br(resultado_detalhado['emissoes_CH4_vermi'] * resultado_detalhado['parametros']['GWP_CH4_20'], 3)} + {formatar_br(resultado_detalhado['emissoes_N2O_vermi'] * resultado_detalhado['parametros']['GWP_N2O_20'], 3)} \\
+    &= {formatar_br(resultado_detalhado['emissao_vermi_kgco2eq'], 3)} \text{{ kg CO}}_2\text{{eq}}
+    \end{{aligned}}
+    """)
+    
+    # Cálculo final das emissões evitadas
+    st.subheader("💰 Emissões Evitadas")
+    st.latex(rf"""
+    \begin{{aligned}}
+    \text{{Emissões Evitadas}} &= \frac{{CO_{{2eq\text{{aterro}}}} - CO_{{2eq\text{{vermi}}}}}}{{1000}} \\
+    &= \frac{{{formatar_br(resultado_detalhado['emissao_aterro_kgco2eq'], 1)} - {formatar_br(resultado_detalhado['emissao_vermi_kgco2eq'], 3)}}}{{1000}} \\
+    &= {formatar_br(resultado_detalhado['emissoes_evitadas_tco2eq'], 3)} \text{{ tCO}}_2\text{{eq}}
+    \end{{aligned}}
+    """)
+
+# =============================================================================
+# RESULTADOS FINANCEIROS
+# =============================================================================
+
 st.header("💰 Créditos de Carbono Computados")
 
 if reatores_processados.empty:
@@ -556,7 +746,7 @@ st.dataframe(reatores_display[colunas_mostrar], use_container_width=True)
 
 # Tabela detalhada de créditos (se houver reatores processados)
 if not reatores_processados.empty:
-    st.header("🧮 Detalhamento dos Créditos")
+    st.header("📊 Detalhamento dos Créditos por Reator")
     
     df_detalhes = reatores_processados[[
         'nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 
@@ -572,7 +762,7 @@ if not reatores_processados.empty:
     st.dataframe(df_detalhes_formatado, use_container_width=True)
 
 # Gráfico de status dos reatores
-st.header("📊 Status dos Reatores")
+st.header("📈 Status dos Reatores")
 
 status_count = reatores_filtrados['status_reator'].value_counts()
 
@@ -588,71 +778,6 @@ fig = px.pie(
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# Informações adicionais sobre a metodologia científica
-with st.expander("🔬 Metodologia Científica de Cálculo"):
-    st.markdown("""
-    **📊 Metodologia de Cálculo Baseada em Referências Científicas:**
-    
-    **Cenário Base (Aterro Sanitário):**
-    - **Metano (CH4):** IPCC (2006), UNFCCC (2016), Wang et al. (2023)
-    - **Óxido Nitroso (N2O):** Wang et al. (2017)
-    - **Fórmula IPCC:** DOC × DOCf × MCF × F × (16/12) × (1 - Ri) × (1 - OX)
-    
-    **Cenário Projeto (Compostagem com minhocas):**
-    - **Metano e Óxido Nitroso:** Yang et al. (2017)
-    - **Fatores específicos para compostagem com minhocas**
-    
-    **Parâmetros Utilizados:**
-    - **TOC (Carbono Orgânico Total):** 43,6% (Yang et al. 2017)
-    - **TN (Nitrogênio Total):** 14,2 g/kg (Yang et al. 2017)
-    - **CH4-C/TOC:** 0,13% (fração do carbono emitida como metano)
-    - **N2O-N/TN:** 0,92% (fração do nitrogênio emitida como óxido nitroso)
-    - **GWP-20 (IPCC AR6):** CH4 = 79,7; N2O = 273
-    
-    **🧮 Fórmula Completa:**
-    ```
-    Emissões Evitadas = [Emissões_Aterro - Emissões_Vermicompostagem] / 1000
-    
-    Emissões_Aterro = (CH4_aterro × 79,7) + (N2O_aterro × 273)
-    Emissões_Vermi = (CH4_vermi × 79,7) + (N2O_vermi × 273)
-    
-    CH4_aterro = Resíduo × DOC × DOCf × MCF × F × (16/12) × (1-Ri) × (1-OX)
-    N2O_aterro = Resíduo × E_medio_ajust × (44/28) / 1.000.000
-    
-    CH4_vermi = Resíduo × TOC × CH4_C_FRAC × (16/12) × (1-umidade)
-    N2O_vermi = Resíduo × TN × N2O_N_FRAC × (44/28) × (1-umidade)
-    ```
-    
-    **📚 Referências:**
-    - IPCC (2006) - Guidelines for National Greenhouse Gas Inventories
-    - UNFCCC (2016) - Approved baseline methodology AMS-III.F
-    - Yang et al. (2017) - Greenhouse gas emissions from vermicomposting
-    - Wang et al. (2017) - Nitrogen oxide emissions from waste management
-    - Wang et al. (2023) - Methane emissions from landfills
-    """)
-
-# Exemplo de cálculo para demonstrar a formatação
-with st.expander("🧮 Exemplo de Cálculo com Formatação Brasileira"):
-    st.markdown(f"""
-    **Exemplo para um reator de 100 litros:**
-    
-    - Capacidade: 100 L
-    - Densidade: 0,5 kg/L
-    - Resíduo processado: **{formatar_br(100 * 0.5, 0)} kg**
-    - Emissões evitadas: **{formatar_tco2eq(0.200)}**
-    
-    **Valor financeiro:**
-    - Preço do carbono: € {formatar_br(85.50, 2)}/tCO₂eq
-    - Câmbio: R$ {formatar_br(5.50, 2)}/€
-    - Valor: **{formatar_moeda_br(0.200 * 85.50 * 5.50)}**
-    
-    **Formatação aplicada:**
-    - Milhares separados por ponto: 1.000, 10.000, 100.000
-    - Decimais separados por vírgula: 0,50 1,25 100,75
-    - Moeda: R$ 1.234,56
-    - Unidades: 1.234,56 kg | 123,456 tCO₂eq
-    """)
-
 # Botão para atualizar dados
 if st.button("🔄 Atualizar Dados do Excel"):
     st.cache_data.clear()
@@ -660,6 +785,6 @@ if st.button("🔄 Atualizar Dados do Excel"):
 
 st.markdown("---")
 st.markdown("""
-**♻️ Sistema de Compostagem - Ribeirão Preto/SP**  
+**♻️ Sistema de Vermicompostagem - Ribeirão Preto/SP**  
 *Cálculos baseados em metodologia científica validada - Dados carregados de: Controladoria-Compostagem-nas-Escolas*
 """)
