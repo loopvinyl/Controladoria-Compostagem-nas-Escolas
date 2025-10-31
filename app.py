@@ -9,7 +9,7 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Compostagem com Minhocas - Ribeirão Preto",
+    page_title="Compostagem nas escolas",
     page_icon="♻️",
     layout="wide"
 )
