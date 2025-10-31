@@ -766,16 +766,46 @@ if not reatores_processados.empty:
         """)
 
 # =============================================================================
-# TABELAS COM DADOS REAIS
+# TABELAS COM DADOS REAIS - VERSÃO CORRIGIDA
 # =============================================================================
 
 st.header("📋 Dados das Escolas")
 
-colunas_escolas = ['id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 'observacoes']
+# Colunas completas conforme seu Excel
+colunas_escolas = [
+    'id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 
+    'observacoes', 'capacidade_total_sistema_litros', 'num_caixas_processamento', 
+    'num_caixas_biofertilizante', 'litragem'
+]
+
+# Filtrar apenas colunas que existem no DataFrame
 colunas_escolas_disponiveis = [col for col in colunas_escolas if col in df_escolas.columns]
 
 if colunas_escolas_disponiveis:
-    st.dataframe(df_escolas[colunas_escolas_disponiveis], use_container_width=True)
+    # Criar cópia para formatação
+    df_escolas_display = df_escolas[colunas_escolas_disponiveis].copy()
+    
+    # Formatar colunas de data para o padrão brasileiro DD/MM/YYYY
+    colunas_data = ['data_implantacao', 'ultima_visita']
+    for col in colunas_data:
+        if col in df_escolas_display.columns:
+            df_escolas_display[col] = df_escolas_display[col].dt.strftime('%d/%m/%Y')
+    
+    # Formatar colunas numéricas
+    colunas_numericas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 
+                         'num_caixas_biofertilizante', 'litragem']
+    for col in colunas_numericas:
+        if col in df_escolas_display.columns:
+            df_escolas_display[col] = df_escolas_display[col].apply(
+                lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A"
+            )
+    
+    st.dataframe(df_escolas_display, use_container_width=True)
+    
+    # Mostrar informações sobre colunas faltantes
+    colunas_faltantes = [col for col in colunas_escolas if col not in df_escolas.columns]
+    if colunas_faltantes:
+        st.info(f"ℹ️ Colunas não encontradas no Excel: {', '.join(colunas_faltantes)}")
 else:
     st.warning("ℹ️ Nenhuma coluna de escolas disponível no formato esperado")
 
@@ -787,8 +817,16 @@ colunas_reatores_disponiveis = [col for col in colunas_reatores if col in df_rea
 if colunas_reatores_disponiveis:
     df_reatores_display = df_reatores[colunas_reatores_disponiveis].copy()
     
+    # Formatar datas dos reatores
+    colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
+    for col in colunas_data_reatores:
+        if col in df_reatores_display.columns:
+            df_reatores_display[col] = df_reatores_display[col].dt.strftime('%d/%m/%Y')
+    
     if 'capacidade_litros' in df_reatores_display.columns:
-        df_reatores_display['capacidade_litros'] = df_reatores_display['capacidade_litros'].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A")
+        df_reatores_display['capacidade_litros'] = df_reatores_display['capacidade_litros'].apply(
+            lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A"
+        )
     
     st.dataframe(df_reatores_display, use_container_width=True)
 else:
