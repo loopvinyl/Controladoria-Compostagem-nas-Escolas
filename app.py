@@ -419,7 +419,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     return df_resultados, total_residuo, total_emissoes_evitadas, detalhes_calculo
 
 # =============================================================================
-# INTERFACE PRINCIPAL
+# INTERFACE PRINCIPAL - REORGANIZADA
 # =============================================================================
 
 # Inicializar session state
@@ -442,7 +442,7 @@ with st.sidebar:
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
 
 # =============================================================================
-# EXIBIÇÃO DOS DADOS REAIS
+# EXIBIÇÃO DOS DADOS REAIS - REORGANIZADA
 # =============================================================================
 
 st.header("📊 Dashboard de Vermicompostagem - Dados Reais")
@@ -494,13 +494,28 @@ valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
 
 # =============================================================================
-# RESULTADOS FINANCEIROS REAIS
+# RESULTADOS FINANCEIROS REAIS - AGORA COMO PRIMEIRA SEÇÃO PRINCIPAL
 # =============================================================================
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
 
 if reatores_processados.empty:
     st.info("ℹ️ Nenhum reator cheio encontrado. Os créditos serão calculados quando os reatores encherem.")
+    
+    # Mostrar métricas zeradas quando não há reatores processados
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Reatores Processados", formatar_br(0, 0))
+    
+    with col2:
+        st.metric("Resíduo Processado", f"{formatar_br(0, 1)} kg")
+    
+    with col3:
+        st.metric("Emissões Evitadas", formatar_tco2eq(0))
+    
+    with col4:
+        st.metric("Valor dos Créditos", formatar_moeda_br(0))
 else:
     col1, col2, col3, col4 = st.columns(4)
     
@@ -517,7 +532,7 @@ else:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
-# DETALHAMENTO COMPLETO DOS CÁLCULOS
+# DETALHAMENTO COMPLETO DOS CÁLCULOS (mantido após os resultados principais)
 # =============================================================================
 
 if not reatores_processados.empty:
@@ -612,7 +627,7 @@ if not reatores_processados.empty:
         """)
 
 # =============================================================================
-# TABELAS COM DADOS REAIS
+# RESTANTE DO CÓDIGO (tabelas e gráficos) - MANTIDO COMO ESTAVA
 # =============================================================================
 
 st.header("📋 Dados das Escolas")
