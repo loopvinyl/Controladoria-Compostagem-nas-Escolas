@@ -247,13 +247,19 @@ def inicializar_session_state():
 def carregar_dados_excel(url):
     """Carrega os dados REAIS do Excel do GitHub"""
     try:
-        st.info("📥 Carregando dados do Excel...")
+        # Usar um placeholder para a mensagem de carregamento
+        loading_placeholder = st.empty()
+        loading_placeholder.info("📥 Carregando dados do Excel...")
         
         # Ler as abas
         df_escolas = pd.read_excel(url, sheet_name='escolas')
         df_reatores = pd.read_excel(url, sheet_name='reatores')
         
-        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
+        # Limpar a mensagem de carregamento
+        loading_placeholder.empty()
+        
+        # Mostrar mensagem de sucesso temporária
+        success_msg = st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
         
         # Converter colunas de data
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
@@ -269,6 +275,9 @@ def carregar_dados_excel(url):
         return df_escolas, df_reatores
         
     except Exception as e:
+        # Limpar mensagem de carregamento em caso de erro
+        if 'loading_placeholder' in locals():
+            loading_placeholder.empty()
         st.error(f"❌ Erro ao carregar dados do Excel: {e}")
         st.error("📋 Verifique a estrutura do Excel e tente novamente.")
         return pd.DataFrame(), pd.DataFrame()
@@ -419,7 +428,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     return df_resultados, total_residuo, total_emissoes_evitadas, detalhes_calculo
 
 # =============================================================================
-# INTERFACE PRINCIPAL
+# INTERFACE PRINCIPAL - REORGANIZADA
 # =============================================================================
 
 # Inicializar session state
@@ -430,6 +439,7 @@ df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
 
 # Verificar se os dados foram carregados
 if df_escolas.empty or df_reatores.empty:
+    st.error("❌ Não foi possível carregar os dados. Verifique o console para mais detalhes.")
     st.stop()
 
 # Sidebar
@@ -442,7 +452,7 @@ with st.sidebar:
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
 
 # =============================================================================
-# EXIBIÇÃO DOS DADOS REAIS
+# EXIBIÇÃO DOS DADOS REAIS - REORGANIZADA
 # =============================================================================
 
 st.header("📊 Dashboard de Vermicompostagem - Dados Reais")
@@ -494,13 +504,28 @@ valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
 
 # =============================================================================
-# RESULTADOS FINANCEIROS REAIS
+# RESULTADOS FINANCEIROS REAIS - AGORA COMO PRIMEIRA SEÇÃO PRINCIPAL
 # =============================================================================
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
 
 if reatores_processados.empty:
     st.info("ℹ️ Nenhum reator cheio encontrado. Os créditos serão calculados quando os reatores encherem.")
+    
+    # Mostrar métricas zeradas quando não há reatores processados
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Reatores Processados", formatar_br(0, 0))
+    
+    with col2:
+        st.metric("Resíduo Processado", f"{formatar_br(0, 1)} kg")
+    
+    with col3:
+        st.metric("Emissões Evitadas", formatar_tco2eq(0))
+    
+    with col4:
+        st.metric("Valor dos Créditos", formatar_moeda_br(0))
 else:
     col1, col2, col3, col4 = st.columns(4)
     
@@ -517,7 +542,7 @@ else:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
-# DETALHAMENTO COMPLETO DOS CÁLCULOS
+# DETALHAMENTO COMPLETO DOS CÁLCULOS (mantido após os resultados principais)
 # =============================================================================
 
 if not reatores_processados.empty:
