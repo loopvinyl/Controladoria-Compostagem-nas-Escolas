@@ -21,6 +21,12 @@ st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de
 URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
+# CONFIGURAÇÕES FIXAS - DENSIDADE PADRÃO
+# =============================================================================
+
+DENSIDADE_PADRAO = 0.6  # kg/L - para resíduos de vegetais, frutas e borra de café
+
+# =============================================================================
 # FUNÇÕES DE FORMATAÇÃO BRASILEIRA
 # =============================================================================
 
@@ -268,15 +274,16 @@ def carregar_dados_excel(url):
         return pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
-# FUNÇÕES DE CÁLCULO CIENTÍFICO
+# FUNÇÕES DE CÁLCULO CIENTÍFICO COM DENSIDADE FIXA
 # =============================================================================
 
-def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, densidade_kg_l=0.5):
+def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros):
     """
     Calcula emissões evitadas baseado no modelo científico
+    COM DENSIDADE FIXA de 0,6 kg/L para resíduos escolares
     """
-    # Massa de resíduos processada
-    residuo_kg = capacidade_litros * densidade_kg_l
+    # Massa de resíduos processada - DENSIDADE FIXA
+    residuo_kg = capacidade_litros * DENSIDADE_PADRAO
     
     # Parâmetros fixos do modelo científico
     T = 25
@@ -332,16 +339,16 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, densidade_kg_
         'emissoes_evitadas_tco2eq': emissões_evitadas_tco2eq,
         'parametros': {
             'capacidade_litros': capacidade_litros,
-            'densidade_kg_l': densidade_kg_l
+            'densidade_kg_l': DENSIDADE_PADRAO
         }
     }
 
-def calcular_emissoes_evitadas_reator(capacidade_litros, densidade_kg_l=0.5):
+def calcular_emissoes_evitadas_reator(capacidade_litros):
     """Versão simplificada para uso geral"""
-    resultado = calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, densidade_kg_l)
+    resultado = calcular_emissoes_evitadas_reator_detalhado(capacidade_litros)
     return resultado['residuo_kg'], resultado['emissoes_evitadas_tco2eq']
 
-def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
+def processar_reatores_cheios(df_reatores, df_escolas):
     """Processa os reatores cheios e calcula emissões evitadas"""
     # Filtrar reatores que já encheram
     reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
@@ -356,7 +363,7 @@ def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
     
     for _, reator in reatores_cheios.iterrows():
         capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 100
-        residuo_kg, emissoes_evitadas = calcular_emissoes_evitadas_reator(capacidade, densidade_kg_l)
+        residuo_kg, emissoes_evitadas = calcular_emissoes_evitadas_reator(capacidade)
         
         resultados.append({
             'id_reator': reator['id_reator'],
@@ -400,16 +407,7 @@ if df_escolas.empty or df_reatores.empty:
 exibir_cotacao_carbono()
 
 with st.sidebar:
-    st.header("⚙️ Parâmetros de Cálculo")
-    
-    densidade_residuo = st.slider(
-        "Densidade do resíduo (kg/litro)",
-        min_value=0.3,
-        max_value=0.8,
-        value=0.5,
-        step=0.05,
-        help="Densidade média dos resíduos orgânicos"
-    )
+    st.header("🎯 Configurações")
     
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
@@ -429,6 +427,14 @@ with st.sidebar:
 # =============================================================================
 
 st.header("📊 Dashboard de Vermicompostagem - Dados Reais")
+
+# Informação sobre densidade fixa
+st.info(f"""
+**⚙️ Parâmetros de Cálculo Fixos:**
+- **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L (padrão para resíduos de vegetais, frutas e borra de café)
+- **Base científica:** Valores médios da literatura para resíduos orgânicos de cozinha escolar
+- **Tipo de resíduo:** Apenas pré-preparo (sem restos de pratos com carne ou laticínios)
+""")
 
 # Métricas gerais
 col1, col2, col3, col4 = st.columns(4)
@@ -458,7 +464,7 @@ else:
     escolas_filtradas = df_escolas
 
 reatores_processados, total_residuo, total_emissoes = processar_reatores_cheios(
-    reatores_filtrados, escolas_filtradas, densidade_residuo
+    reatores_filtrados, escolas_filtradas
 )
 
 # Calcular valores financeiros
@@ -475,14 +481,14 @@ valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", tax
 st.header("🧮 Detalhamento do Cálculo")
 
 # Calcular exemplo detalhado
-resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade_exemplo, densidade_residuo)
+resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade_exemplo)
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("📋 Parâmetros do Cálculo")
     st.write(f"**Capacidade do reator:** {formatar_br(capacidade_exemplo, 0)} L")
-    st.write(f"**Densidade do resíduo:** {formatar_br(densidade_residuo, 2)} kg/L")
+    st.write(f"**Densidade do resíduo:** {formatar_br(DENSIDADE_PADRAO, 2)} kg/L (FIXO)")
     st.write(f"**Massa de resíduos:** {formatar_br(resultado_detalhado['residuo_kg'], 1)} kg")
 
 with col2:
@@ -629,7 +635,7 @@ else:
 # INFORMAÇÕES SOBRE OS DADOS
 # =============================================================================
 
-with st.expander("ℹ️ Informações sobre os Dados"):
+with st.expander("ℹ️ Informações sobre os Dados e Cálculos"):
     st.markdown(f"""
     **📊 Fonte dos Dados:**
     - **Excel:** [Controladoria-Compostagem-nas-Escolas]({URL_EXCEL})
@@ -638,9 +644,13 @@ with st.expander("ℹ️ Informações sobre os Dados"):
     - **Reatores cheios:** {reatores_cheios}
     - **Reatores ativos:** {reatores_ativos}
     
+    **⚙️ Parâmetros Fixos de Cálculo:**
+    - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L (FIXO)
+    - **Tipo de resíduo:** Vegetais, frutas e borra de café (pré-preparo)
+    - **Base científica:** Valores médios da literatura para resíduos orgânicos de cozinha
+    
     **🧮 Cálculos Realizados:**
     - Baseado no modelo científico (IPCC, UNFCCC, Yang et al.)
-    - Densidade do resíduo: {densidade_residuo} kg/L
     - Capacidade exemplo: {capacidade_exemplo} L
     - Preço do carbono: € {formatar_br(preco_carbono_eur, 2)}/tCO₂eq
     
