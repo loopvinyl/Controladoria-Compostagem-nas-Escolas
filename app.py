@@ -2,21 +2,21 @@
 def carregar_dados_excel(url):
     """Carrega os dados REAIS do Excel do GitHub"""
     try:
+        # Usar um placeholder para a mensagem de carregamento
         loading_placeholder = st.empty()
         loading_placeholder.info("📥 Carregando dados do Excel...")
         
-        # Primeiro, vamos listar todas as abas disponíveis para diagnóstico
-        excel_file = pd.ExcelFile(url)
-        st.info(f"📋 Abas disponíveis no Excel: {excel_file.sheet_names}")
-        
-        # Agora ler as abas específicas
+        # Ler as abas - USANDO OS NOMES EXATOS DO SEU EXCEL
         df_escolas = pd.read_excel(url, sheet_name='escolas')
-        df_reatores = pd.read_excel(url, sheet_name='reatores')
+        df_reatores = pd.read_excel(url, sheet_name='reatores')  # minúsculo mesmo
         
+        # Limpar a mensagem de carregamento
         loading_placeholder.empty()
+        
+        # Mostrar mensagem de sucesso
         st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
         
-        # Restante do código de conversão de datas...
+        # Converter colunas de data
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
@@ -30,19 +30,9 @@ def carregar_dados_excel(url):
         return df_escolas, df_reatores
         
     except Exception as e:
+        # Limpar mensagem de carregamento em caso de erro
         if 'loading_placeholder' in locals():
             loading_placeholder.empty()
         st.error(f"❌ Erro ao carregar dados do Excel: {e}")
-        
-        # Diagnóstico mais detalhado
-        try:
-            excel_file = pd.ExcelFile(url)
-            st.error(f"📋 Abas encontradas: {excel_file.sheet_names}")
-            st.error("🔍 Procurando por 'reatores' nas abas...")
-            for sheet in excel_file.sheet_names:
-                if 'reator' in sheet.lower():
-                    st.error(f"→ Possível match: '{sheet}'")
-        except:
-            st.error("❌ Não foi possível acessar o arquivo Excel")
-            
+        st.error("📋 Verifique se o arquivo Excel existe no repositório GitHub")
         return pd.DataFrame(), pd.DataFrame()
