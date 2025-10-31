@@ -486,7 +486,7 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
         return escolas_ativas
 
 # =============================================================================
-# INTERFACE PRINCIPAL
+# INTERFACE PRINCIPAL - COM REORDENAÇÃO
 # =============================================================================
 
 # Inicializar session state
@@ -510,7 +510,30 @@ with st.sidebar:
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
 
 # =============================================================================
-# EXIBIÇÃO DOS DADOS REAIS
+# PROCESSAMENTO DOS CÁLCULOS - ANTES DA EXIBIÇÃO
+# =============================================================================
+
+# Processar cálculos ANTES de exibir
+if escola_selecionada != "Todas as escolas":
+    reatores_filtrados = df_reatores[df_reatores['id_escola'] == escola_selecionada]
+    escolas_filtradas = df_escolas[df_escolas['id_escola'] == escola_selecionada]
+else:
+    reatores_filtrados = df_reatores
+    escolas_filtradas = df_escolas
+
+reatores_processados, total_residuo, total_emissoes, detalhes_calculo = processar_reatores_cheios(
+    reatores_filtrados, escolas_filtradas
+)
+
+# Calcular valores financeiros
+preco_carbono_eur = st.session_state.preco_carbono
+taxa_cambio = st.session_state.taxa_cambio
+
+valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
+valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
+
+# =============================================================================
+# EXIBIÇÃO DOS DADOS REAIS - COM CRÉDITOS EM PRIMEIRO LUGAR
 # =============================================================================
 
 st.header("📊 Dashboard de Compostagem com Minhocas - Dados Reais")
@@ -542,6 +565,44 @@ with col4:
     # MODIFICAÇÃO: Considera reator ativo se tiver qualquer texto na coluna status_reator
     reatores_ativos = len(df_reatores[df_reatores['status_reator'].notna()])
     st.metric("Reatores Ativos", formatar_br(reatores_ativos, 0))
+
+# =============================================================================
+# RESULTADOS FINANCEIROS REAIS - AGORA EM PRIMEIRO LUGAR
+# =============================================================================
+
+st.header("💰 Créditos de Carbono Computados - Sistema Real")
+
+if reatores_processados.empty:
+    st.info("ℹ️ Nenhum reator cheio encontrado. Os créditos serão calculados quando os reatores encherem.")
+    
+    # Mostrar métricas zeradas quando não há reatores processados
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Reatores Processados", formatar_br(0, 0))
+    
+    with col2:
+        st.metric("Resíduo Processado", f"{formatar_br(0, 1)} kg")
+    
+    with col3:
+        st.metric("Emissões Evitadas", formatar_tco2eq(0))
+    
+    with col4:
+        st.metric("Valor dos Créditos", formatar_moeda_br(0))
+else:
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Reatores Processados", formatar_br(len(reatores_processados), 0))
+    
+    with col2:
+        st.metric("Resíduo Processado", f"{formatar_br(total_residuo, 1)} kg")
+    
+    with col3:
+        st.metric("Emissões Evitadas", formatar_tco2eq(total_emissoes))
+    
+    with col4:
+        st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
 # ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
@@ -612,63 +673,6 @@ if not escolas_com_reatores_ativos.empty:
     with col3:
         escolas_sem_reatores = total_escolas_ativas - escolas_com_reatores
         st.metric("Escolas sem Reatores Ativos", formatar_br(escolas_sem_reatores, 0))
-
-# Processar cálculos
-if escola_selecionada != "Todas as escolas":
-    reatores_filtrados = df_reatores[df_reatores['id_escola'] == escola_selecionada]
-    escolas_filtradas = df_escolas[df_escolas['id_escola'] == escola_selecionada]
-else:
-    reatores_filtrados = df_reatores
-    escolas_filtradas = df_escolas
-
-reatores_processados, total_residuo, total_emissoes, detalhes_calculo = processar_reatores_cheios(
-    reatores_filtrados, escolas_filtradas
-)
-
-# Calcular valores financeiros
-preco_carbono_eur = st.session_state.preco_carbono
-taxa_cambio = st.session_state.taxa_cambio
-
-valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
-valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
-
-# =============================================================================
-# RESULTADOS FINANCEIROS REAIS
-# =============================================================================
-
-st.header("💰 Créditos de Carbono Computados - Sistema Real")
-
-if reatores_processados.empty:
-    st.info("ℹ️ Nenhum reator cheio encontrado. Os créditos serão calculados quando os reatores encherem.")
-    
-    # Mostrar métricas zeradas quando não há reatores processados
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Reatores Processados", formatar_br(0, 0))
-    
-    with col2:
-        st.metric("Resíduo Processado", f"{formatar_br(0, 1)} kg")
-    
-    with col3:
-        st.metric("Emissões Evitadas", formatar_tco2eq(0))
-    
-    with col4:
-        st.metric("Valor dos Créditos", formatar_moeda_br(0))
-else:
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Reatores Processados", formatar_br(len(reatores_processados), 0))
-    
-    with col2:
-        st.metric("Resíduo Processado", f"{formatar_br(total_residuo, 1)} kg")
-    
-    with col3:
-        st.metric("Emissões Evitadas", formatar_tco2eq(total_emissoes))
-    
-    with col4:
-        st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
 # DETALHAMENTO COMPLETO DOS CÁLCULOS
