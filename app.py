@@ -336,10 +336,26 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros):
     
     return {
         'residuo_kg': residuo_kg,
+        'emissoes_CH4_aterro': emissoes_CH4_aterro,
+        'emissoes_N2O_aterro': emissao_N2O_aterro,
+        'emissoes_CH4_vermi': emissoes_CH4_vermi,
+        'emissoes_N2O_vermi': emissoes_N2O_vermi,
+        'emissao_aterro_kgco2eq': emissao_aterro_kgco2eq,
+        'emissao_vermi_kgco2eq': emissao_vermi_kgco2eq,
         'emissoes_evitadas_tco2eq': emissões_evitadas_tco2eq,
         'parametros': {
             'capacidade_litros': capacidade_litros,
-            'densidade_kg_l': DENSIDADE_PADRAO
+            'densidade_kg_l': DENSIDADE_PADRAO,
+            'T': T,
+            'DOC': DOC,
+            'DOCf': DOCf,
+            'TOC_YANG': TOC_YANG,
+            'TN_YANG': TN_YANG,
+            'CH4_C_FRAC_YANG': CH4_C_FRAC_YANG,
+            'N2O_N_FRAC_YANG': N2O_N_FRAC_YANG,
+            'umidade': umidade,
+            'GWP_CH4_20': GWP_CH4_20,
+            'GWP_N2O_20': GWP_N2O_20
         }
     }
 
@@ -354,16 +370,29 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
     
     if reatores_cheios.empty:
-        return pd.DataFrame(), 0, 0
+        return pd.DataFrame(), 0, 0, []
     
     # Calcular para cada reator
     resultados = []
     total_residuo = 0
     total_emissoes_evitadas = 0
+    detalhes_calculo = []
     
     for _, reator in reatores_cheios.iterrows():
         capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 100
-        residuo_kg, emissoes_evitadas = calcular_emissoes_evitadas_reator(capacidade)
+        resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade)
+        residuo_kg = resultado_detalhado['residuo_kg']
+        emissoes_evitadas = resultado_detalhado['emissoes_evitadas_tco2eq']
+        
+        # Guardar detalhes do cálculo para este reator
+        detalhes_calculo.append({
+            'id_reator': reator['id_reator'],
+            'id_escola': reator['id_escola'],
+            'capacidade_litros': capacidade,
+            'residuo_kg': residuo_kg,
+            'emissoes_evitadas_tco2eq': emissoes_evitadas,
+            'calculo_detalhado': resultado_detalhado
+        })
         
         resultados.append({
             'id_reator': reator['id_reator'],
@@ -387,7 +416,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
             how='left'
         )
     
-    return df_resultados, total_residuo, total_emissoes_evitadas
+    return df_resultados, total_residuo, total_emissoes_evitadas, detalhes_calculo
 
 # =============================================================================
 # INTERFACE PRINCIPAL
@@ -411,16 +440,6 @@ with st.sidebar:
     
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
-    
-    st.header("🧮 Cálculo de Exemplo")
-    capacidade_exemplo = st.slider(
-        "Capacidade por reator (litros)",
-        min_value=25,
-        max_value=200,
-        value=100,
-        step=5,
-        help="Capacidade de cada reator de processamento"
-    )
 
 # =============================================================================
 # EXIBIÇÃO DOS DADOS REAIS
@@ -463,7 +482,7 @@ else:
     reatores_filtrados = df_reatores
     escolas_filtradas = df_escolas
 
-reatores_processados, total_residuo, total_emissoes = processar_reatores_cheios(
+reatores_processados, total_residuo, total_emissoes, detalhes_calculo = processar_reatores_cheios(
     reatores_filtrados, escolas_filtradas
 )
 
@@ -473,42 +492,6 @@ taxa_cambio = st.session_state.taxa_cambio
 
 valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
-
-# =============================================================================
-# SEÇÃO DE CÁLCULO DETALHADO
-# =============================================================================
-
-st.header("🧮 Detalhamento do Cálculo")
-
-# Calcular exemplo detalhado
-resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade_exemplo)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📋 Parâmetros do Cálculo")
-    st.write(f"**Capacidade do reator:** {formatar_br(capacidade_exemplo, 0)} L")
-    st.write(f"**Densidade do resíduo:** {formatar_br(DENSIDADE_PADRAO, 2)} kg/L (FIXO)")
-    st.write(f"**Massa de resíduos:** {formatar_br(resultado_detalhado['residuo_kg'], 1)} kg")
-
-with col2:
-    st.subheader("📊 Resultado do Cálculo")
-    st.metric(
-        "Emissões Evitadas", 
-        formatar_tco2eq(resultado_detalhado['emissoes_evitadas_tco2eq'])
-    )
-    
-    valor_exemplo_brl = calcular_valor_creditos(
-        resultado_detalhado['emissoes_evitadas_tco2eq'], 
-        preco_carbono_eur, 
-        "R$", 
-        taxa_cambio
-    )
-    
-    st.metric(
-        "Valor dos Créditos", 
-        formatar_moeda_br(valor_exemplo_brl)
-    )
 
 # =============================================================================
 # RESULTADOS FINANCEIROS REAIS
@@ -532,6 +515,101 @@ else:
     
     with col4:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
+
+# =============================================================================
+# DETALHAMENTO COMPLETO DOS CÁLCULOS
+# =============================================================================
+
+if not reatores_processados.empty:
+    st.header("🧮 Detalhamento Completo dos Cálculos")
+    
+    # Mostrar cálculo para o primeiro reator como exemplo
+    primeiro_reator = detalhes_calculo[0]
+    calc = primeiro_reator['calculo_detalhado']
+    
+    st.subheader(f"📋 Cálculo Detalhado para o Reator {primeiro_reator['id_reator']}")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Parâmetros de Entrada:**")
+        st.write(f"- Capacidade do reator: {formatar_br(calc['parametros']['capacidade_litros'], 0)} L")
+        st.write(f"- Densidade do resíduo: {formatar_br(calc['parametros']['densidade_kg_l'], 2)} kg/L")
+        st.write(f"- Massa de resíduos: {formatar_br(calc['residuo_kg'], 1)} kg")
+        
+        st.write("**Parâmetros Científicos:**")
+        st.write(f"- Temperatura: {formatar_br(calc['parametros']['T'], 0)}°C")
+        st.write(f"- Umidade: {formatar_br(calc['parametros']['umidade'] * 100, 0)}%")
+        st.write(f"- DOC: {formatar_br(calc['parametros']['DOC'], 3)}")
+        st.write(f"- TOC: {formatar_br(calc['parametros']['TOC_YANG'], 3)}")
+        st.write(f"- TN: {formatar_br(calc['parametros']['TN_YANG'], 4)}")
+    
+    with col2:
+        st.write("**Resultados Intermediários:**")
+        st.write(f"- CH₄ Aterro: {formatar_br(calc['emissoes_CH4_aterro'], 3)} kg")
+        st.write(f"- N₂O Aterro: {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg")
+        st.write(f"- CH₄ Vermi: {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg")
+        st.write(f"- N₂O Vermi: {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg")
+        
+        st.write("**Resultados Finais:**")
+        st.write(f"- Emissões Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq")
+        st.write(f"- Emissões Vermi: {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq")
+        st.metric(
+            "Emissões Evitadas", 
+            formatar_tco2eq(calc['emissoes_evitadas_tco2eq'])
+        )
+
+    # Fórmulas matemáticas
+    with st.expander("📝 Ver Fórmulas Matemáticas Completas"):
+        st.markdown(f"""
+        **🧮 Fórmulas Utilizadas no Cálculo:**
+
+        **1. Massa de Resíduos:**
+        ```
+        Resíduo (kg) = Capacidade (L) × Densidade (kg/L)
+        Resíduo = {formatar_br(calc['parametros']['capacidade_litros'], 0)} × {formatar_br(calc['parametros']['densidade_kg_l'], 2)} = {formatar_br(calc['residuo_kg'], 1)} kg
+        ```
+
+        **2. Emissões do Aterro (Cenário Base):**
+        ```
+        CH₄ Aterro = Resíduo × DOC × DOCf × MCF × F × (16/12) × (1-Ri) × (1-OX)
+        CH₄ Aterro = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['DOC'], 3)} × {formatar_br(calc['parametros']['DOCf'], 3)} × 1 × 0,5 × 1,333 × 1 × 0,9
+        CH₄ Aterro = {formatar_br(calc['emissoes_CH4_aterro'], 3)} kg
+
+        N₂O Aterro = Resíduo × E_médio × (44/28) ÷ 1.000.000
+        N₂O Aterro = {formatar_br(calc['residuo_kg'], 1)} × 0,69 × 1,571 ÷ 1.000.000
+        N₂O Aterro = {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg
+        ```
+
+        **3. Emissões da Vermicompostagem (Cenário Projeto):**
+        ```
+        CH₄ Vermi = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
+        CH₄ Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        CH₄ Vermi = {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg
+
+        N₂O Vermi = Resíduo × TN × N₂O-N/TN × (44/28) × (1-umidade)
+        N₂O Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TN_YANG'], 4)} × {formatar_br(calc['parametros']['N2O_N_FRAC_YANG'], 4)} × 1,571 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        N₂O Vermi = {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg
+        ```
+
+        **4. Emissões em CO₂eq:**
+        ```
+        CO₂eq Aterro = (CH₄ Aterro × GWP_CH₄) + (N₂O Aterro × GWP_N₂O)
+        CO₂eq Aterro = ({formatar_br(calc['emissoes_CH4_aterro'], 3)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_aterro'], 6)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
+        CO₂eq Aterro = {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq
+
+        CO₂eq Vermi = (CH₄ Vermi × GWP_CH₄) + (N₂O Vermi × GWP_N₂O)
+        CO₂eq Vermi = ({formatar_br(calc['emissoes_CH4_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
+        CO₂eq Vermi = {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq
+        ```
+
+        **5. Emissões Evitadas:**
+        ```
+        Emissões Evitadas = (CO₂eq Aterro - CO₂eq Vermi) ÷ 1000
+        Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_vermi_kgco2eq'], 3)}) ÷ 1000
+        Emissões Evitadas = {formatar_br(calc['emissoes_evitadas_tco2eq'], 3)} tCO₂eq
+        ```
+        """)
 
 # =============================================================================
 # TABELAS COM DADOS REAIS
@@ -651,8 +729,8 @@ with st.expander("ℹ️ Informações sobre os Dados e Cálculos"):
     
     **🧮 Cálculos Realizados:**
     - Baseado no modelo científico (IPCC, UNFCCC, Yang et al.)
-    - Capacidade exemplo: {capacidade_exemplo} L
     - Preço do carbono: € {formatar_br(preco_carbono_eur, 2)}/tCO₂eq
+    - Taxa de câmbio: R$ {formatar_br(taxa_cambio, 2)}/€
     
     **💡 Próximos Passos:**
     - Atualize o Excel com novas datas de enchimento
