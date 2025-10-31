@@ -578,7 +578,7 @@ if not reatores_processados.empty:
         
         st.write("**Resultados Finais:**")
         st.write(f"- Emissões Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq")
-        st.write(f"- Emissões Vermi: {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq")
+        st.write(f"- Emissões Compostagem com minhocas: {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq")
         st.metric(
             "Emissões Evitadas", 
             formatar_tco2eq(calc['emissoes_evitadas_tco2eq'])
