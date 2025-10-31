@@ -728,14 +728,6 @@ if 'status' in df_escolas.columns:
 else:
     st.info("ℹ️ Coluna 'status' não encontrada para gerar gráfico")
 
-# =============================================================================
-# BOTÃO PARA ATUALIZAR DADOS
-# =============================================================================
-
-if st.button("🔄 Atualizar Dados do Excel"):
-    st.cache_data.clear()
-    st.rerun()
-
 st.markdown("---")
 st.markdown("""
 **♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
