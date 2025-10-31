@@ -9,16 +9,23 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Vermicompostagem - Ribeirão Preto",
+    page_title="Compostagem com Minhocas - Ribeirão Preto",
     page_icon="♻️",
     layout="wide"
 )
 
-st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
+st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
-# URL do Excel no GitHub (RAW)
-URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
+# =============================================================================
+# CONFIGURAÇÕES - URLS ALTERNATIVAS PARA O EXCEL
+# =============================================================================
+
+# URLs alternativas para o Excel (tentará em ordem)
+URLS_EXCEL = [
+    "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx",
+    "https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/raw/main/dados_vermicompostagem.xlsx"
+]
 
 # =============================================================================
 # CONFIGURAÇÕES FIXAS - DENSIDADE PADRÃO
@@ -240,28 +247,48 @@ def inicializar_session_state():
         st.session_state.cotacao_carregada = False
 
 # =============================================================================
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - MELHORADA
 # =============================================================================
 
 @st.cache_data
-def carregar_dados_excel(url):
-    """Carrega os dados REAIS do Excel do GitHub"""
+def carregar_dados_excel(_urls):
+    """Carrega os dados REAIS do Excel do GitHub - tenta múltiplas URLs"""
+    df_escolas = pd.DataFrame()
+    df_reatores = pd.DataFrame()
+    url_sucesso = None
+    
+    loading_placeholder = st.empty()
+    
+    for i, url in enumerate(_urls):
+        try:
+            loading_placeholder.info(f"📥 Tentando carregar dados... (URL {i+1}/{len(_urls)})")
+            
+            # Ler as abas
+            df_escolas = pd.read_excel(url, sheet_name='escolas')
+            df_reatores = pd.read_excel(url, sheet_name='reatores')
+            
+            loading_placeholder.empty()
+            st.success(f"✅ Dados carregados com sucesso!")
+            st.success(f"📊 {len(df_escolas)} escolas e {len(df_reatores)} reatores carregados")
+            
+            url_sucesso = url
+            break
+            
+        except Exception as e:
+            loading_placeholder.empty()
+            st.warning(f"⚠️ Não foi possível carregar da URL {i+1}")
+            continue
+    
+    if df_escolas.empty or df_reatores.empty:
+        st.error("❌ Não foi possível carregar os dados de nenhuma das URLs fornecidas.")
+        st.error("📋 Por favor, verifique:")
+        st.error("   - Se o arquivo Excel existe no repositório")
+        st.error("   - Se as abas 'escolas' e 'reatores' existem no arquivo")
+        st.error("   - Se o repositório é público")
+        return pd.DataFrame(), pd.DataFrame()
+    
+    # Converter colunas de data
     try:
-        # Usar um placeholder para a mensagem de carregamento
-        loading_placeholder = st.empty()
-        loading_placeholder.info("📥 Carregando dados do Excel...")
-        
-        # Ler as abas
-        df_escolas = pd.read_excel(url, sheet_name='escolas')
-        df_reatores = pd.read_excel(url, sheet_name='reatores')
-        
-        # Limpar a mensagem de carregamento
-        loading_placeholder.empty()
-        
-        # Mostrar mensagem de sucesso temporária
-        success_msg = st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
-        
-        # Converter colunas de data
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
@@ -271,16 +298,10 @@ def carregar_dados_excel(url):
         for col in colunas_data_reatores:
             if col in df_reatores.columns:
                 df_reatores[col] = pd.to_datetime(df_reatores[col], errors='coerce')
-                
-        return df_escolas, df_reatores
-        
     except Exception as e:
-        # Limpar mensagem de carregamento em caso de erro
-        if 'loading_placeholder' in locals():
-            loading_placeholder.empty()
-        st.error(f"❌ Erro ao carregar dados do Excel: {e}")
-        st.error("📋 Verifique a estrutura do Excel e tente novamente.")
-        return pd.DataFrame(), pd.DataFrame()
+        st.warning(f"⚠️ Aviso ao converter datas: {e}")
+    
+    return df_escolas, df_reatores
 
 # =============================================================================
 # FUNÇÕES DE CÁLCULO CIENTÍFICO COM DENSIDADE FIXA
@@ -333,24 +354,24 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros):
     
     emissao_N2O_aterro = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
     
-    # Cálculo das emissões da vermicompostagem
-    emissoes_CH4_vermi = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
-    emissoes_N2O_vermi = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
+    # Cálculo das emissões da compostagem com minhocas
+    emissoes_CH4_compostagem = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
+    emissoes_N2O_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
     
     # Cálculo das emissões evitadas
     emissao_aterro_kgco2eq = (emissoes_CH4_aterro * GWP_CH4_20 + emissao_N2O_aterro * GWP_N2O_20)
-    emissao_vermi_kgco2eq = (emissoes_CH4_vermi * GWP_CH4_20 + emissoes_N2O_vermi * GWP_N2O_20)
+    emissao_compostagem_kgco2eq = (emissoes_CH4_compostagem * GWP_CH4_20 + emissoes_N2O_compostagem * GWP_N2O_20)
     
-    emissões_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_vermi_kgco2eq) / 1000
+    emissões_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_compostagem_kgco2eq) / 1000
     
     return {
         'residuo_kg': residuo_kg,
         'emissoes_CH4_aterro': emissoes_CH4_aterro,
         'emissoes_N2O_aterro': emissao_N2O_aterro,
-        'emissoes_CH4_vermi': emissoes_CH4_vermi,
-        'emissoes_N2O_vermi': emissoes_N2O_vermi,
+        'emissoes_CH4_compostagem': emissoes_CH4_compostagem,
+        'emissoes_N2O_compostagem': emissoes_N2O_compostagem,
         'emissao_aterro_kgco2eq': emissao_aterro_kgco2eq,
-        'emissao_vermi_kgco2eq': emissao_vermi_kgco2eq,
+        'emissao_compostagem_kgco2eq': emissao_compostagem_kgco2eq,
         'emissoes_evitadas_tco2eq': emissões_evitadas_tco2eq,
         'parametros': {
             'capacidade_litros': capacidade_litros,
@@ -418,7 +439,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     df_resultados = pd.DataFrame(resultados)
     
     # Juntar com informações da escola
-    if 'nome_escola' in df_escolas.columns:
+    if 'nome_escola' in df_escolas.columns and 'id_escola' in df_resultados.columns:
         df_resultados = df_resultados.merge(
             df_escolas[['id_escola', 'nome_escola']], 
             on='id_escola', 
@@ -428,19 +449,11 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     return df_resultados, total_residuo, total_emissoes_evitadas, detalhes_calculo
 
 # =============================================================================
-# INTERFACE PRINCIPAL - REORGANIZADA
+# INTERFACE PRINCIPAL
 # =============================================================================
 
 # Inicializar session state
 inicializar_session_state()
-
-# Carregar dados REAIS
-df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
-
-# Verificar se os dados foram carregados
-if df_escolas.empty or df_reatores.empty:
-    st.error("❌ Não foi possível carregar os dados. Verifique o console para mais detalhes.")
-    st.stop()
 
 # Sidebar
 exibir_cotacao_carbono()
@@ -448,14 +461,61 @@ exibir_cotacao_carbono()
 with st.sidebar:
     st.header("🎯 Configurações")
     
+    # Carregar dados REAIS
+    st.info("📥 Clique para carregar dados")
+    if st.button("🔄 Carregar Dados do Excel"):
+        st.session_state.dados_carregados = False
+        st.rerun()
+
+# Carregar dados REAIS
+if not st.session_state.get('dados_carregados', False):
+    df_escolas, df_reatores = carregar_dados_excel(URLS_EXCEL)
+    
+    if not df_escolas.empty and not df_reatores.empty:
+        st.session_state.df_escolas = df_escolas
+        st.session_state.df_reatores = df_reatores
+        st.session_state.dados_carregados = True
+        st.rerun()
+    else:
+        # Se não conseguiu carregar, mostrar opção de upload
+        with st.expander("📁 Alternativa: Carregar arquivo Excel local"):
+            st.info("Se as URLs online não funcionarem, você pode fazer upload do arquivo Excel localmente:")
+            
+            arquivo_upload = st.file_uploader("Escolha o arquivo Excel", type=['xlsx'])
+            
+            if arquivo_upload is not None:
+                try:
+                    df_escolas_upload = pd.read_excel(arquivo_upload, sheet_name='escolas')
+                    df_reatores_upload = pd.read_excel(arquivo_upload, sheet_name='reatores')
+                    
+                    st.success(f"✅ Arquivo carregado: {len(df_escolas_upload)} escolas e {len(df_reatores_upload)} reatores")
+                    
+                    # Atualizar os dados na session state
+                    st.session_state.df_escolas = df_escolas_upload
+                    st.session_state.df_reatores = df_reatores_upload
+                    st.session_state.dados_carregados = True
+                    
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Erro ao carregar arquivo: {e}")
+        
+        st.stop()
+
+# Usar dados da session state
+df_escolas = st.session_state.df_escolas
+df_reatores = st.session_state.df_reatores
+
+# Configuração da escola na sidebar
+with st.sidebar:
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
 
 # =============================================================================
-# EXIBIÇÃO DOS DADOS REAIS - REORGANIZADA
+# EXIBIÇÃO DOS DADOS REAIS
 # =============================================================================
 
-st.header("📊 Dashboard de Vermicompostagem - Dados Reais")
+st.header("📊 Dashboard de Compostagem com Minhocas - Dados Reais")
 
 # Informação sobre densidade fixa
 st.info(f"""
@@ -504,7 +564,7 @@ valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
 
 # =============================================================================
-# RESULTADOS FINANCEIROS REAIS - AGORA COMO PRIMEIRA SEÇÃO PRINCIPAL
+# RESULTADOS FINANCEIROS REAIS
 # =============================================================================
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
@@ -542,7 +602,7 @@ else:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
-# DETALHAMENTO COMPLETO DOS CÁLCULOS (mantido após os resultados principais)
+# DETALHAMENTO COMPLETO DOS CÁLCULOS
 # =============================================================================
 
 if not reatores_processados.empty:
@@ -573,12 +633,12 @@ if not reatores_processados.empty:
         st.write("**Resultados Intermediários:**")
         st.write(f"- CH₄ Aterro: {formatar_br(calc['emissoes_CH4_aterro'], 3)} kg")
         st.write(f"- N₂O Aterro: {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg")
-        st.write(f"- CH₄ Vermi: {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg")
-        st.write(f"- N₂O Vermi: {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg")
+        st.write(f"- CH₄ Compostagem: {formatar_br(calc['emissoes_CH4_compostagem'], 5)} kg")
+        st.write(f"- N₂O Compostagem: {formatar_br(calc['emissoes_N2O_compostagem'], 5)} kg")
         
         st.write("**Resultados Finais:**")
         st.write(f"- Emissões Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq")
-        st.write(f"- Emissões Vermi: {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq")
+        st.write(f"- Emissões Compostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg CO₂eq")
         st.metric(
             "Emissões Evitadas", 
             formatar_tco2eq(calc['emissoes_evitadas_tco2eq'])
@@ -606,15 +666,15 @@ if not reatores_processados.empty:
         N₂O Aterro = {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg
         ```
 
-        **3. Emissões da Vermicompostagem (Cenário Projeto):**
+        **3. Emissões da Compostagem com Minhocas (Cenário Projeto):**
         ```
-        CH₄ Vermi = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
-        CH₄ Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
-        CH₄ Vermi = {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg
+        CH₄ Compostagem = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
+        CH₄ Compostagem = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        CH₄ Compostagem = {formatar_br(calc['emissoes_CH4_compostagem'], 5)} kg
 
-        N₂O Vermi = Resíduo × TN × N₂O-N/TN × (44/28) × (1-umidade)
-        N₂O Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TN_YANG'], 4)} × {formatar_br(calc['parametros']['N2O_N_FRAC_YANG'], 4)} × 1,571 × {formatar_br(1-calc['parametros']['umidade'], 2)}
-        N₂O Vermi = {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg
+        N₂O Compostagem = Resíduo × TN × N₂O-N/TN × (44/28) × (1-umidade)
+        N₂O Compostagem = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TN_YANG'], 4)} × {formatar_br(calc['parametros']['N2O_N_FRAC_YANG'], 4)} × 1,571 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        N₂O Compostagem = {formatar_br(calc['emissoes_N2O_compostagem'], 5)} kg
         ```
 
         **4. Emissões em CO₂eq:**
@@ -623,26 +683,25 @@ if not reatores_processados.empty:
         CO₂eq Aterro = ({formatar_br(calc['emissoes_CH4_aterro'], 3)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_aterro'], 6)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
         CO₂eq Aterro = {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq
 
-        CO₂eq Vermi = (CH₄ Vermi × GWP_CH₄) + (N₂O Vermi × GWP_N₂O)
-        CO₂eq Vermi = ({formatar_br(calc['emissoes_CH4_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
-        CO₂eq Vermi = {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq
+        CO₂eq Compostagem = (CH₄ Compostagem × GWP_CH₄) + (N₂O Compostagem × GWP_N₂O)
+        CO₂eq Compostagem = ({formatar_br(calc['emissoes_CH4_compostagem'], 5)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_compostagem'], 5)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
+        CO₂eq Compostagem = {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg CO₂eq
         ```
 
         **5. Emissões Evitadas:**
         ```
-        Emissões Evitadas = (CO₂eq Aterro - CO₂eq Vermi) ÷ 1000
-        Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_vermi_kgco2eq'], 3)}) ÷ 1000
+        Emissões Evitadas = (CO₂eq Aterro - CO₂eq Compostagem) ÷ 1000
+        Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)}) ÷ 1000
         Emissões Evitadas = {formatar_br(calc['emissoes_evitadas_tco2eq'], 3)} tCO₂eq
         ```
         """)
 
 # =============================================================================
-# TABELAS COM DADOS REAIS
+# RESTANTE DO CÓDIGO (tabelas, gráficos, etc.)
 # =============================================================================
 
 st.header("📋 Dados das Escolas")
 
-# Verificar e mostrar colunas disponíveis
 colunas_escolas = ['id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 'observacoes']
 colunas_escolas_disponiveis = [col for col in colunas_escolas if col in df_escolas.columns]
 
@@ -653,19 +712,11 @@ else:
 
 st.header("📋 Dados dos Reatores")
 
-# Verificar e mostrar colunas disponíveis
-colunas_reatores = ['id_reator', 'id_escola', 'capacidade_litros', 'status_reator', 'data_ativacao', 'data_encheu', 'data_colheita', 'residuo_kg', 'emissoes_evitadas_tco2eq', 'observacoes']
+colunas_reatores = ['id_reator', 'id_escola', 'capacidade_litros', 'status_reator', 'data_ativacao', 'data_encheu', 'data_colheita', 'observacoes']
 colunas_reatores_disponiveis = [col for col in colunas_reatores if col in df_reatores.columns]
 
 if colunas_reatores_disponiveis:
-    # Formatar colunas numéricas se existirem
     df_reatores_display = df_reatores[colunas_reatores_disponiveis].copy()
-    
-    if 'residuo_kg' in df_reatores_display.columns:
-        df_reatores_display['residuo_kg'] = df_reatores_display['residuo_kg'].apply(lambda x: formatar_br(x, 1) if pd.notna(x) else "N/A")
-    
-    if 'emissoes_evitadas_tco2eq' in df_reatores_display.columns:
-        df_reatores_display['emissoes_evitadas_tco2eq'] = df_reatores_display['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x) if pd.notna(x) else "N/A")
     
     if 'capacidade_litros' in df_reatores_display.columns:
         df_reatores_display['capacidade_litros'] = df_reatores_display['capacidade_litros'].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A")
@@ -674,102 +725,14 @@ if colunas_reatores_disponiveis:
 else:
     st.warning("ℹ️ Nenhuma coluna de reatores disponível no formato esperado")
 
-# =============================================================================
-# DETALHAMENTO DOS CRÉDITOS (se houver reatores processados)
-# =============================================================================
-
-if not reatores_processados.empty:
-    st.header("📊 Detalhamento dos Créditos por Reator")
-    
-    df_detalhes = reatores_processados[[
-        'nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 
-        'residuo_kg', 'emissoes_evitadas_tco2eq'
-    ]].copy()
-    
-    # Formatar valores
-    df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
-    df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
-    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
-    
-    st.dataframe(df_detalhes, use_container_width=True)
-
-# =============================================================================
-# GRÁFICOS COM DADOS REAIS
-# =============================================================================
-
-st.header("📈 Status dos Reatores")
-
-if 'status_reator' in df_reatores.columns:
-    status_count = df_reatores['status_reator'].value_counts()
-    
-    labels_formatados = []
-    for status, count in status_count.items():
-        labels_formatados.append(f"{status} ({formatar_br(count, 0)})")
-
-    fig = px.pie(
-        values=status_count.values,
-        names=labels_formatados,
-        title="Distribuição dos Status dos Reatores"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("ℹ️ Coluna 'status_reator' não encontrada para gerar gráfico")
-
-# Gráfico de escolas por status
-st.header("🏫 Status das Escolas")
-
-if 'status' in df_escolas.columns:
-    status_escolas_count = df_escolas['status'].value_counts()
-    
-    labels_escolas_formatados = []
-    for status, count in status_escolas_count.items():
-        labels_escolas_formatados.append(f"{status} ({formatar_br(count, 0)})")
-
-    fig2 = px.pie(
-        values=status_escolas_count.values,
-        names=labels_escolas_formatados,
-        title="Distribuição dos Status das Escolas"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-else:
-    st.info("ℹ️ Coluna 'status' não encontrada para gerar gráfico")
-
-# =============================================================================
-# INFORMAÇÕES SOBRE OS DADOS
-# =============================================================================
-
-with st.expander("ℹ️ Informações sobre os Dados e Cálculos"):
-    st.markdown(f"""
-    **📊 Fonte dos Dados:**
-    - **Excel:** [Controladoria-Compostagem-nas-Escolas]({URL_EXCEL})
-    - **Escolas carregadas:** {len(df_escolas)}
-    - **Reatores carregados:** {len(df_reatores)}
-    - **Reatores cheios:** {reatores_cheios}
-    - **Reatores ativos:** {reatores_ativos}
-    
-    **⚙️ Parâmetros Fixos de Cálculo:**
-    - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L (FIXO)
-    - **Tipo de resíduo:** Vegetais, frutas e borra de café (pré-preparo)
-    - **Base científica:** Valores médios da literatura para resíduos orgânicos de cozinha
-    
-    **🧮 Cálculos Realizados:**
-    - Baseado no modelo científico (IPCC, UNFCCC, Yang et al.)
-    - Preço do carbono: € {formatar_br(preco_carbono_eur, 2)}/tCO₂eq
-    - Taxa de câmbio: R$ {formatar_br(taxa_cambio, 2)}/€
-    
-    **💡 Próximos Passos:**
-    - Atualize o Excel com novas datas de enchimento
-    - Adicione observações sobre o andamento dos reatores
-    - Monitore o status de cada escola
-    """)
-
 # Botão para atualizar dados
 if st.button("🔄 Atualizar Dados do Excel"):
     st.cache_data.clear()
+    st.session_state.dados_carregados = False
     st.rerun()
 
 st.markdown("---")
 st.markdown("""
-**♻️ Sistema de Vermicompostagem - Ribeirão Preto/SP**  
-*Dados carregados de: [Controladoria-Compostagem-nas-Escolas](https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas)*
+**♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
+*Desenvolvido para acompanhamento de créditos de carbono*
 """)
