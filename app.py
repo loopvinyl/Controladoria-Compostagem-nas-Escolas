@@ -9,23 +9,19 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Compostagem nas escolas",
+    page_title="Compostagem com Minhocas - Ribeirão Preto",
     page_icon="♻️",
     layout="wide"
 )
 
-st.title("♻️ Compostagem nas Escolas de Ribeirão Preto")
+st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # =============================================================================
-# CONFIGURAÇÕES - URLS ALTERNATIVAS PARA O EXCEL
+# CONFIGURAÇÕES - URL DO EXCEL
 # =============================================================================
 
-# URLs alternativas para o Excel (tentará em ordem)
-URLS_EXCEL = [
-    "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx",
-    "https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/raw/main/dados_vermicompostagem.xlsx"
-]
+URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
 # CONFIGURAÇÕES FIXAS - DENSIDADE PADRÃO
@@ -247,48 +243,28 @@ def inicializar_session_state():
         st.session_state.cotacao_carregada = False
 
 # =============================================================================
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - MELHORADA
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS
 # =============================================================================
 
 @st.cache_data
-def carregar_dados_excel(_urls):
-    """Carrega os dados REAIS do Excel do GitHub - tenta múltiplas URLs"""
-    df_escolas = pd.DataFrame()
-    df_reatores = pd.DataFrame()
-    url_sucesso = None
-    
-    loading_placeholder = st.empty()
-    
-    for i, url in enumerate(_urls):
-        try:
-            loading_placeholder.info(f"📥 Tentando carregar dados... (URL {i+1}/{len(_urls)})")
-            
-            # Ler as abas
-            df_escolas = pd.read_excel(url, sheet_name='escolas')
-            df_reatores = pd.read_excel(url, sheet_name='reatores')
-            
-            loading_placeholder.empty()
-            st.success(f"✅ Dados carregados com sucesso!")
-            st.success(f"📊 {len(df_escolas)} escolas e {len(df_reatores)} reatores carregados")
-            
-            url_sucesso = url
-            break
-            
-        except Exception as e:
-            loading_placeholder.empty()
-            st.warning(f"⚠️ Não foi possível carregar da URL {i+1}")
-            continue
-    
-    if df_escolas.empty or df_reatores.empty:
-        st.error("❌ Não foi possível carregar os dados de nenhuma das URLs fornecidas.")
-        st.error("📋 Por favor, verifique:")
-        st.error("   - Se o arquivo Excel existe no repositório")
-        st.error("   - Se as abas 'escolas' e 'reatores' existem no arquivo")
-        st.error("   - Se o repositório é público")
-        return pd.DataFrame(), pd.DataFrame()
-    
-    # Converter colunas de data
+def carregar_dados_excel(url):
+    """Carrega os dados REAIS do Excel do GitHub"""
     try:
+        # Usar um placeholder para a mensagem de carregamento
+        loading_placeholder = st.empty()
+        loading_placeholder.info("📥 Carregando dados do Excel...")
+        
+        # Ler as abas
+        df_escolas = pd.read_excel(url, sheet_name='escolas')
+        df_reatores = pd.read_excel(url, sheet_name='reatores')
+        
+        # Limpar a mensagem de carregamento
+        loading_placeholder.empty()
+        
+        # Mostrar mensagem de sucesso
+        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
+        
+        # Converter colunas de data
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
@@ -298,10 +274,16 @@ def carregar_dados_excel(_urls):
         for col in colunas_data_reatores:
             if col in df_reatores.columns:
                 df_reatores[col] = pd.to_datetime(df_reatores[col], errors='coerce')
+                
+        return df_escolas, df_reatores
+        
     except Exception as e:
-        st.warning(f"⚠️ Aviso ao converter datas: {e}")
-    
-    return df_escolas, df_reatores
+        # Limpar mensagem de carregamento em caso de erro
+        if 'loading_placeholder' in locals():
+            loading_placeholder.empty()
+        st.error(f"❌ Erro ao carregar dados do Excel: {e}")
+        st.error("📋 Verifique se o arquivo Excel existe no repositório GitHub")
+        return pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
 # FUNÇÕES DE CÁLCULO CIENTÍFICO COM DENSIDADE FIXA
@@ -455,59 +437,20 @@ def processar_reatores_cheios(df_reatores, df_escolas):
 # Inicializar session state
 inicializar_session_state()
 
+# Carregar dados REAIS
+df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
+
+# Verificar se os dados foram carregados
+if df_escolas.empty or df_reatores.empty:
+    st.error("❌ Não foi possível carregar os dados. Verifique se o arquivo Excel existe no repositório GitHub.")
+    st.stop()
+
 # Sidebar
 exibir_cotacao_carbono()
 
 with st.sidebar:
-    st.header("🎯 Configurações")
+    st.header("🔍 Filtros")
     
-    # Carregar dados REAIS
-    st.info("📥 Clique para carregar dados")
-    if st.button("🔄 Carregar Dados do Excel"):
-        st.session_state.dados_carregados = False
-        st.rerun()
-
-# Carregar dados REAIS
-if not st.session_state.get('dados_carregados', False):
-    df_escolas, df_reatores = carregar_dados_excel(URLS_EXCEL)
-    
-    if not df_escolas.empty and not df_reatores.empty:
-        st.session_state.df_escolas = df_escolas
-        st.session_state.df_reatores = df_reatores
-        st.session_state.dados_carregados = True
-        st.rerun()
-    else:
-        # Se não conseguiu carregar, mostrar opção de upload
-        with st.expander("📁 Alternativa: Carregar arquivo Excel local"):
-            st.info("Se as URLs online não funcionarem, você pode fazer upload do arquivo Excel localmente:")
-            
-            arquivo_upload = st.file_uploader("Escolha o arquivo Excel", type=['xlsx'])
-            
-            if arquivo_upload is not None:
-                try:
-                    df_escolas_upload = pd.read_excel(arquivo_upload, sheet_name='escolas')
-                    df_reatores_upload = pd.read_excel(arquivo_upload, sheet_name='reatores')
-                    
-                    st.success(f"✅ Arquivo carregado: {len(df_escolas_upload)} escolas e {len(df_reatores_upload)} reatores")
-                    
-                    # Atualizar os dados na session state
-                    st.session_state.df_escolas = df_escolas_upload
-                    st.session_state.df_reatores = df_reatores_upload
-                    st.session_state.dados_carregados = True
-                    
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Erro ao carregar arquivo: {e}")
-        
-        st.stop()
-
-# Usar dados da session state
-df_escolas = st.session_state.df_escolas
-df_reatores = st.session_state.df_reatores
-
-# Configuração da escola na sidebar
-with st.sidebar:
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
     escola_selecionada = st.selectbox("Selecionar escola", escolas_options)
 
@@ -697,7 +640,7 @@ if not reatores_processados.empty:
         """)
 
 # =============================================================================
-# RESTANTE DO CÓDIGO (tabelas, gráficos, etc.)
+# TABELAS COM DADOS REAIS
 # =============================================================================
 
 st.header("📋 Dados das Escolas")
@@ -725,14 +668,76 @@ if colunas_reatores_disponiveis:
 else:
     st.warning("ℹ️ Nenhuma coluna de reatores disponível no formato esperado")
 
-# Botão para atualizar dados
+# =============================================================================
+# DETALHAMENTO DOS CRÉDITOS (se houver reatores processados)
+# =============================================================================
+
+if not reatores_processados.empty:
+    st.header("📊 Detalhamento dos Créditos por Reator")
+    
+    df_detalhes = reatores_processados[[
+        'nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 
+        'residuo_kg', 'emissoes_evitadas_tco2eq'
+    ]].copy()
+    
+    # Formatar valores
+    df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
+    df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
+    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
+    
+    st.dataframe(df_detalhes, use_container_width=True)
+
+# =============================================================================
+# GRÁFICOS COM DADOS REAIS
+# =============================================================================
+
+st.header("📈 Status dos Reatores")
+
+if 'status_reator' in df_reatores.columns:
+    status_count = df_reatores['status_reator'].value_counts()
+    
+    labels_formatados = []
+    for status, count in status_count.items():
+        labels_formatados.append(f"{status} ({formatar_br(count, 0)})")
+
+    fig = px.pie(
+        values=status_count.values,
+        names=labels_formatados,
+        title="Distribuição dos Status dos Reatores"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("ℹ️ Coluna 'status_reator' não encontrada para gerar gráfico")
+
+# Gráfico de escolas por status
+st.header("🏫 Status das Escolas")
+
+if 'status' in df_escolas.columns:
+    status_escolas_count = df_escolas['status'].value_counts()
+    
+    labels_escolas_formatados = []
+    for status, count in status_escolas_count.items():
+        labels_escolas_formatados.append(f"{status} ({formatar_br(count, 0)})")
+
+    fig2 = px.pie(
+        values=status_escolas_count.values,
+        names=labels_escolas_formatados,
+        title="Distribuição dos Status das Escolas"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+else:
+    st.info("ℹ️ Coluna 'status' não encontrada para gerar gráfico")
+
+# =============================================================================
+# BOTÃO PARA ATUALIZAR DADOS
+# =============================================================================
+
 if st.button("🔄 Atualizar Dados do Excel"):
     st.cache_data.clear()
-    st.session_state.dados_carregados = False
     st.rerun()
 
 st.markdown("---")
 st.markdown("""
 **♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
-*Desenvolvido para acompanhamento de créditos de carbono*
+*Dados carregados de: [Controladoria-Compostagem-nas-Escolas](https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas)*
 """)
