@@ -9,16 +9,16 @@ from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="Compostagem com Minhocas - Ribeirão Preto",
+    page_title="Vermicompostagem - Ribeirão Preto",
     page_icon="♻️",
     layout="wide"
 )
 
-st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
+st.title("♻️ Vermicompostagem nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # URL do Excel no GitHub (RAW)
-URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_compostagem.xlsx"
+URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
 # CONFIGURAÇÕES FIXAS - DENSIDADE PADRÃO
@@ -333,24 +333,24 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros):
     
     emissao_N2O_aterro = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
     
-    # Cálculo das emissões da compostagem com minhocas
-    emissoes_CH4_compostagem = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
-    emissoes_N2O_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
+    # Cálculo das emissões da vermicompostagem
+    emissoes_CH4_vermi = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
+    emissoes_N2O_vermi = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
     
     # Cálculo das emissões evitadas
     emissao_aterro_kgco2eq = (emissoes_CH4_aterro * GWP_CH4_20 + emissao_N2O_aterro * GWP_N2O_20)
-    emissao_compostagem_kgco2eq = (emissoes_CH4_compostagem * GWP_CH4_20 + emissoes_N2O_compostagem * GWP_N2O_20)
+    emissao_vermi_kgco2eq = (emissoes_CH4_vermi * GWP_CH4_20 + emissoes_N2O_vermi * GWP_N2O_20)
     
-    emissões_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_compostagem_kgco2eq) / 1000
+    emissões_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_vermi_kgco2eq) / 1000
     
     return {
         'residuo_kg': residuo_kg,
         'emissoes_CH4_aterro': emissoes_CH4_aterro,
         'emissoes_N2O_aterro': emissao_N2O_aterro,
-        'emissoes_CH4_compostagem': emissoes_CH4_compostagem,
-        'emissoes_N2O_compostagem': emissoes_N2O_compostagem,
+        'emissoes_CH4_vermi': emissoes_CH4_vermi,
+        'emissoes_N2O_vermi': emissoes_N2O_vermi,
         'emissao_aterro_kgco2eq': emissao_aterro_kgco2eq,
-        'emissao_compostagem_kgco2eq': emissao_compostagem_kgco2eq,
+        'emissao_vermi_kgco2eq': emissao_vermi_kgco2eq,
         'emissoes_evitadas_tco2eq': emissões_evitadas_tco2eq,
         'parametros': {
             'capacidade_litros': capacidade_litros,
@@ -455,7 +455,7 @@ with st.sidebar:
 # EXIBIÇÃO DOS DADOS REAIS - REORGANIZADA
 # =============================================================================
 
-st.header("📊 Dashboard de Compostagem com Minhocas - Dados Reais")
+st.header("📊 Dashboard de Vermicompostagem - Dados Reais")
 
 # Informação sobre densidade fixa
 st.info(f"""
@@ -573,12 +573,12 @@ if not reatores_processados.empty:
         st.write("**Resultados Intermediários:**")
         st.write(f"- CH₄ Aterro: {formatar_br(calc['emissoes_CH4_aterro'], 3)} kg")
         st.write(f"- N₂O Aterro: {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg")
-        st.write(f"- CH₄ Compostagem: {formatar_br(calc['emissoes_CH4_compostagem'], 5)} kg")
-        st.write(f"- N₂O Compostagem: {formatar_br(calc['emissoes_N2O_compostagem'], 5)} kg")
+        st.write(f"- CH₄ Vermi: {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg")
+        st.write(f"- N₂O Vermi: {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg")
         
         st.write("**Resultados Finais:**")
         st.write(f"- Emissões Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq")
-        st.write(f"- Emissões Compostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg CO₂eq")
+        st.write(f"- Emissões Vermi: {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq")
         st.metric(
             "Emissões Evitadas", 
             formatar_tco2eq(calc['emissoes_evitadas_tco2eq'])
@@ -606,15 +606,15 @@ if not reatores_processados.empty:
         N₂O Aterro = {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg
         ```
 
-        **3. Emissões da Compostagem com Minhocas (Cenário Projeto):**
+        **3. Emissões da Vermicompostagem (Cenário Projeto):**
         ```
-        CH₄ Compostagem = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
-        CH₄ Compostagem = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
-        CH₄ Compostagem = {formatar_br(calc['emissoes_CH4_compostagem'], 5)} kg
+        CH₄ Vermi = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
+        CH₄ Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        CH₄ Vermi = {formatar_br(calc['emissoes_CH4_vermi'], 5)} kg
 
-        N₂O Compostagem = Resíduo × TN × N₂O-N/TN × (44/28) × (1-umidade)
-        N₂O Compostagem = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TN_YANG'], 4)} × {formatar_br(calc['parametros']['N2O_N_FRAC_YANG'], 4)} × 1,571 × {formatar_br(1-calc['parametros']['umidade'], 2)}
-        N₂O Compostagem = {formatar_br(calc['emissoes_N2O_compostagem'], 5)} kg
+        N₂O Vermi = Resíduo × TN × N₂O-N/TN × (44/28) × (1-umidade)
+        N₂O Vermi = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TN_YANG'], 4)} × {formatar_br(calc['parametros']['N2O_N_FRAC_YANG'], 4)} × 1,571 × {formatar_br(1-calc['parametros']['umidade'], 2)}
+        N₂O Vermi = {formatar_br(calc['emissoes_N2O_vermi'], 5)} kg
         ```
 
         **4. Emissões em CO₂eq:**
@@ -623,15 +623,15 @@ if not reatores_processados.empty:
         CO₂eq Aterro = ({formatar_br(calc['emissoes_CH4_aterro'], 3)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_aterro'], 6)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
         CO₂eq Aterro = {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg CO₂eq
 
-        CO₂eq Compostagem = (CH₄ Compostagem × GWP_CH₄) + (N₂O Compostagem × GWP_N₂O)
-        CO₂eq Compostagem = ({formatar_br(calc['emissoes_CH4_compostagem'], 5)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_compostagem'], 5)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
-        CO₂eq Compostagem = {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg CO₂eq
+        CO₂eq Vermi = (CH₄ Vermi × GWP_CH₄) + (N₂O Vermi × GWP_N₂O)
+        CO₂eq Vermi = ({formatar_br(calc['emissoes_CH4_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_vermi'], 5)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
+        CO₂eq Vermi = {formatar_br(calc['emissao_vermi_kgco2eq'], 3)} kg CO₂eq
         ```
 
         **5. Emissões Evitadas:**
         ```
-        Emissões Evitadas = (CO₂eq Aterro - CO₂eq Compostagem) ÷ 1000
-        Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)}) ÷ 1000
+        Emissões Evitadas = (CO₂eq Aterro - CO₂eq Vermi) ÷ 1000
+        Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_vermi_kgco2eq'], 3)}) ÷ 1000
         Emissões Evitadas = {formatar_br(calc['emissoes_evitadas_tco2eq'], 3)} tCO₂eq
         ```
         """)
@@ -770,6 +770,6 @@ if st.button("🔄 Atualizar Dados do Excel"):
 
 st.markdown("---")
 st.markdown("""
-**♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
+**♻️ Sistema de Vermicompostagem - Ribeirão Preto/SP**  
 *Dados carregados de: [Controladoria-Compostagem-nas-Escolas](https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas)*
 """)
