@@ -270,6 +270,9 @@ def carregar_dados_excel(url):
         for col in colunas_data_reatores:
             if col in df_reatores.columns:
                 df_reatores[col] = pd.to_datetime(df_reatores[col], errors='coerce')
+        
+        # VERIFICAR E ADICIONAR COLUNAS FALTANTES PARA COMPATIBILIDADE
+        df_escolas, df_reatores = verificar_e_adicionar_colunas(df_escolas, df_reatores)
                 
         return df_escolas, df_reatores
         
@@ -306,6 +309,37 @@ def carregar_dados_excel(url):
         })
         
         return df_escolas, df_reatores
+
+def verificar_e_adicionar_colunas(df_escolas, df_reatores):
+    """
+    Verifica e adiciona colunas necessárias para compatibilidade
+    """
+    # Adicionar coluna 'tipo_caixa' se não existir
+    if 'tipo_caixa' not in df_reatores.columns:
+        df_reatores['tipo_caixa'] = 'Processamento'
+        st.info("ℹ️ Coluna 'tipo_caixa' adicionada - todos os reatores considerados como Processamento")
+    
+    # Adicionar coluna 'capacidade_litros' se não existir
+    if 'capacidade_litros' not in df_reatores.columns:
+        df_reatores['capacidade_litros'] = 100  # Valor padrão
+        st.info("ℹ️ Coluna 'capacidade_litros' adicionada - valor padrão de 100L")
+    
+    # Adicionar colunas de sistema se não existirem
+    if 'capacidade_total_sistema_litros' not in df_escolas.columns:
+        # Calcular capacidade total baseada nos reatores
+        capacidade_por_escola = df_reatores.groupby('id_escola')['capacidade_litros'].sum()
+        df_escolas['capacidade_total_sistema_litros'] = df_escolas['id_escola'].map(capacidade_por_escola).fillna(0)
+    
+    if 'num_caixas_processamento' not in df_escolas.columns:
+        # Contar reatores por escola
+        contagem_por_escola = df_reatores.groupby('id_escola').size()
+        df_escolas['num_caixas_processamento'] = df_escolas['id_escola'].map(contagem_por_escola).fillna(0)
+    
+    if 'num_caixas_biofertilizante' not in df_escolas.columns:
+        # Inicializar com zero (assumindo que todos são processamento)
+        df_escolas['num_caixas_biofertilizante'] = 0
+    
+    return df_escolas, df_reatores
 
 # =============================================================================
 # FUNÇÕES DE CÁLCULO CIENTÍFICO (BASEADAS NO SCRIPT ANEXO)
@@ -432,11 +466,12 @@ def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
     Processa os reatores cheios e calcula emissões evitadas usando modelo científico
     Considera APENAS caixas de processamento (exclui caixa de biofertilizante)
     """
-    # Filtrar reatores que já encheram e são de processamento
-    reatores_cheios = df_reatores[
-        (df_reatores['data_encheu'].notna()) & 
-        (df_reatores['tipo_caixa'] == 'Processamento')
-    ].copy()
+    # Filtrar reatores que já encheram
+    reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
+    
+    # Se existir a coluna 'tipo_caixa', filtrar apenas processamento
+    if 'tipo_caixa' in reatores_cheios.columns:
+        reatores_cheios = reatores_cheios[reatores_cheios['tipo_caixa'] == 'Processamento']
     
     if reatores_cheios.empty:
         return pd.DataFrame(), 0, 0, 0
@@ -448,15 +483,17 @@ def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
     total_caixas_processamento = len(reatores_cheios)
     
     for _, reator in reatores_cheios.iterrows():
-        capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 50  # Padrão 50L por caixa
+        capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 100
         residuo_kg, emissoes_evitadas = calcular_emissoes_evitadas_reator(capacidade, densidade_kg_l)
+        
+        tipo_caixa = reator.get('tipo_caixa', 'Processamento')  # Usar get para evitar KeyError
         
         resultados.append({
             'id_reator': reator['id_reator'],
             'id_escola': reator['id_escola'],
             'data_encheu': reator['data_encheu'],
             'capacidade_litros': capacidade,
-            'tipo_caixa': reator['tipo_caixa'],
+            'tipo_caixa': tipo_caixa,
             'residuo_kg': residuo_kg,
             'emissoes_evitadas_tco2eq': emissoes_evitadas
         })
@@ -467,11 +504,12 @@ def processar_reatores_cheios(df_reatores, df_escolas, densidade_kg_l=0.5):
     df_resultados = pd.DataFrame(resultados)
     
     # Juntar com informações da escola
-    df_resultados = df_resultados.merge(
-        df_escolas[['id_escola', 'nome_escola']], 
-        on='id_escola', 
-        how='left'
-    )
+    if 'nome_escola' in df_escolas.columns:
+        df_resultados = df_resultados.merge(
+            df_escolas[['id_escola', 'nome_escola']], 
+            on='id_escola', 
+            how='left'
+        )
     
     return df_resultados, total_residuo, total_emissoes_evitadas, total_caixas_processamento
 
@@ -508,12 +546,12 @@ with st.sidebar:
     # Configuração do cálculo de exemplo
     st.header("🧮 Cálculo de Exemplo")
     capacidade_exemplo = st.slider(
-        "Capacidade por caixa de processamento (litros)",
+        "Capacidade por reator (litros)",
         min_value=25,
-        max_value=100,
-        value=50,
+        max_value=200,
+        value=100,
         step=5,
-        help="Capacidade de cada caixa de processamento de resíduos"
+        help="Capacidade de cada reator de processamento de resíduos"
     )
 
 # =============================================================================
@@ -525,14 +563,13 @@ st.header("📊 Dashboard de Vermicompostagem")
 # Informações do sistema
 st.info("""
 **🏗️ Sistema de Vermicompostagem:**
-- Cada sistema possui **4 caixas totalizando 200L**
-- **3 caixas para processamento** de resíduos (150L)
-- **1 caixa coletora** de biofertilizante (50L) - *não entra no cálculo de resíduos*
-- Cada caixa de processamento tem capacidade de **50 litros**
-- A caixa de biofertilizante coleta o líquido fertilizante (biowash)
+- Cada sistema escolar possui múltiplos reatores/caixas
+- Reatores de processamento: processam os resíduos orgânicos
+- Caixa coletora de biofertilizante: coleta o líquido fertilizante (biowash) - *não entra no cálculo de resíduos*
+- Capacidade típica por reator: 50-100 litros
 """)
 
-# Métricas gerais
+# Métricas gerais - COM VERIFICAÇÃO DE COLUNAS
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -541,19 +578,25 @@ with col1:
 
 with col2:
     total_reatores = len(df_reatores)
-    st.metric("Total de Caixas", formatar_br(total_reatores, 0))
+    st.metric("Total de Reatores", formatar_br(total_reatores, 0))
 
 with col3:
-    # Contar apenas caixas de processamento
-    caixas_processamento = len(df_reatores[df_reatores['tipo_caixa'] == 'Processamento'])
-    st.metric("Caixas de Processamento", formatar_br(caixas_processamento, 0))
+    # Verificar se a coluna existe antes de filtrar
+    if 'tipo_caixa' in df_reatores.columns:
+        caixas_processamento = len(df_reatores[df_reatores['tipo_caixa'] == 'Processamento'])
+    else:
+        caixas_processamento = total_reatores  # Se não existe, assumir que todos são processamento
+    st.metric("Reatores de Processamento", formatar_br(caixas_processamento, 0))
 
 with col4:
-    # Contar apenas caixas de biofertilizante
-    caixas_biofertilizante = len(df_reatores[df_reatores['tipo_caixa'] == 'Biofertilizante'])
+    # Verificar se a coluna existe antes de filtrar
+    if 'tipo_caixa' in df_reatores.columns:
+        caixas_biofertilizante = len(df_reatores[df_reatores['tipo_caixa'] == 'Biofertilizante'])
+    else:
+        caixas_biofertilizante = 0  # Se não existe, assumir zero
     st.metric("Caixas Biofertilizante", formatar_br(caixas_biofertilizante, 0))
 
-# Processar cálculos - APENAS CAIXAS DE PROCESSAMENTO
+# Processar cálculos
 if escola_selecionada != "Todas as escolas":
     reatores_filtrados = df_reatores[df_reatores['id_escola'] == escola_selecionada]
     escolas_filtradas = df_escolas[df_escolas['id_escola'] == escola_selecionada]
@@ -578,27 +621,28 @@ valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", tax
 
 st.header("🧮 Detalhamento do Cálculo")
 
-# Calcular exemplo detalhado para UMA caixa
+# Calcular exemplo detalhado para UM reator
 resultado_detalhado_individual = calcular_emissoes_evitadas_reator_detalhado(capacidade_exemplo, densidade_residuo)
 
-# Calcular exemplo detalhado para TODAS as caixas de processamento
+# Calcular exemplo detalhado para TODOS os reatores de processamento
 if not reatores_processados.empty:
     capacidade_total_sistema = total_caixas_processamento * capacidade_exemplo
     residuo_total_sistema = capacidade_total_sistema * densidade_residuo
     resultado_detalhado_total = calcular_emissoes_evitadas_reator_detalhado(capacidade_total_sistema, densidade_residuo)
 else:
-    capacidade_total_sistema = 3 * capacidade_exemplo  # 3 caixas de processamento padrão
+    # Usar valores padrão se não houver reatores processados
+    capacidade_total_sistema = 2 * capacidade_exemplo  # Assumir 2 reatores como exemplo
     residuo_total_sistema = capacidade_total_sistema * densidade_residuo
     resultado_detalhado_total = calcular_emissoes_evitadas_reator_detalhado(capacidade_total_sistema, densidade_residuo)
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📋 Por Caixa Individual")
-    st.write(f"**Capacidade da caixa:** {formatar_br(capacidade_exemplo, 0)} L")
+    st.subheader("📋 Por Reator Individual")
+    st.write(f"**Capacidade do reator:** {formatar_br(capacidade_exemplo, 0)} L")
     st.write(f"**Densidade do resíduo:** {formatar_br(densidade_residuo, 2)} kg/L")
-    st.write(f"**Massa de resíduos por caixa:** {formatar_br(resultado_detalhado_individual['residuo_kg'], 1)} kg")
-    st.write(f"**Emissões evitadas por caixa:** {formatar_tco2eq(resultado_detalhado_individual['emissoes_evitadas_tco2eq'])}")
+    st.write(f"**Massa de resíduos por reator:** {formatar_br(resultado_detalhado_individual['residuo_kg'], 1)} kg")
+    st.write(f"**Emissões evitadas por reator:** {formatar_tco2eq(resultado_detalhado_individual['emissoes_evitadas_tco2eq'])}")
     
     # Valor financeiro individual
     valor_individual_eur = calcular_valor_creditos(
@@ -614,35 +658,23 @@ with col1:
     )
     
     st.metric(
-        "Valor por caixa", 
+        "Valor por reator", 
         formatar_moeda_br(valor_individual_brl),
         help=f"Valor em Reais (€ {formatar_br(valor_individual_eur, 2)})"
     )
 
 with col2:
-    st.subheader("📊 Sistema Completo")
-    st.write(f"**Nº de caixas de processamento:** {formatar_br(total_caixas_processamento, 0)}")
-    st.write(f"**Capacidade total do sistema:** {formatar_br(capacidade_total_sistema, 0)} L")
-    st.write(f"**Massa total de resíduos:** {formatar_br(residuo_total_sistema, 1)} kg")
-    st.write(f"**Emissões evitadas totais:** {formatar_tco2eq(resultado_detalhado_total['emissoes_evitadas_tco2eq'])}")
+    st.subheader("📊 Sistema Real")
+    st.write(f"**Nº de reatores processados:** {formatar_br(total_caixas_processamento, 0)}")
+    st.write(f"**Capacidade total processada:** {formatar_br(capacidade_total_sistema, 0)} L")
+    st.write(f"**Massa total de resíduos:** {formatar_br(total_residuo, 1)} kg")
+    st.write(f"**Emissões evitadas totais:** {formatar_tco2eq(total_emissoes)}")
     
     # Valor financeiro total
-    valor_total_eur = calcular_valor_creditos(
-        resultado_detalhado_total['emissoes_evitadas_tco2eq'], 
-        preco_carbono_eur, 
-        "€"
-    )
-    valor_total_brl = calcular_valor_creditos(
-        resultado_detalhado_total['emissoes_evitadas_tco2eq'], 
-        preco_carbono_eur, 
-        "R$", 
-        taxa_cambio
-    )
-    
     st.metric(
-        "Valor total do sistema", 
-        formatar_moeda_br(valor_total_brl),
-        help=f"Valor em Reais (€ {formatar_br(valor_total_eur, 2)})"
+        "Valor total dos créditos", 
+        formatar_moeda_br(valor_brl),
+        help=f"Valor em Reais (€ {formatar_br(valor_eur, 2)})"
     )
 
 # =============================================================================
@@ -652,13 +684,40 @@ with col2:
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
 
 if reatores_processados.empty:
-    st.info("ℹ️ Nenhuma caixa de processamento cheia encontrada. Os créditos serão calculados quando as caixas encherem.")
+    st.info("ℹ️ Nenhum reator de processamento cheio encontrado. Os créditos serão calculados quando os reatores encherem.")
+    
+    # Mostrar cálculo teórico baseado na capacidade total da escola selecionada
+    if escola_selecionada != "Todas as escolas":
+        escola_info = escolas_filtradas.iloc[0]
+        capacidade_teorica = escola_info.get('capacidade_total_sistema_litros', 200)
+        num_reatores_teorico = escola_info.get('num_caixas_processamento', 3)
+        
+        st.subheader("📈 Projeção Teórica")
+        st.write(f"**Capacidade teórica do sistema:** {formatar_br(capacidade_teorica, 0)} L")
+        st.write(f"**Número de reatores de processamento:** {formatar_br(num_reatores_teorico, 0)}")
+        
+        resultado_teorico = calcular_emissoes_evitadas_reator_detalhado(capacidade_teorica, densidade_residuo)
+        valor_teorico_brl = calcular_valor_creditos(
+            resultado_teorico['emissoes_evitadas_tco2eq'], 
+            preco_carbono_eur, 
+            "R$", 
+            taxa_cambio
+        )
+        
+        st.metric(
+            "Emissões evitadas teóricas", 
+            formatar_tco2eq(resultado_teorico['emissoes_evitadas_tco2eq'])
+        )
+        st.metric(
+            "Valor teórico dos créditos", 
+            formatar_moeda_br(valor_teorico_brl)
+        )
 else:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric(
-            "Caixas Processadas",
+            "Reatores Processados",
             formatar_br(len(reatores_processados), 0)
         )
     
@@ -681,28 +740,34 @@ else:
         )
 
 # Tabela de reatores com informações completas
-st.header("📋 Detalhes das Caixas por Escola")
+st.header("📋 Detalhes dos Reatores por Escola")
 
-# Juntar com nomes das escolas
-reatores_display = reatores_filtrados.merge(
-    df_escolas[['id_escola', 'nome_escola']], 
-    on='id_escola', 
-    how='left'
-)
+# Juntar com nomes das escolas (se a coluna existir)
+reatores_display = reatores_filtrados.copy()
+if 'nome_escola' in df_escolas.columns:
+    reatores_display = reatores_display.merge(
+        df_escolas[['id_escola', 'nome_escola']], 
+        on='id_escola', 
+        how='left'
+    )
 
-# Selecionar colunas para mostrar
-colunas_mostrar = ['nome_escola', 'id_reator', 'tipo_caixa', 'status_reator', 'data_ativacao', 'data_encheu', 'capacidade_litros']
+# Selecionar colunas para mostrar (apenas as que existem)
+colunas_disponiveis = reatores_display.columns.tolist()
+colunas_desejadas = ['nome_escola', 'id_reator', 'tipo_caixa', 'status_reator', 'data_ativacao', 'data_encheu', 'capacidade_litros']
+colunas_mostrar = [col for col in colunas_desejadas if col in colunas_disponiveis]
 
 st.dataframe(reatores_display[colunas_mostrar], use_container_width=True)
 
 # Tabela detalhada de créditos (se houver reatores processados)
 if not reatores_processados.empty:
-    st.header("📊 Detalhamento dos Créditos por Caixa")
+    st.header("📊 Detalhamento dos Créditos por Reator")
     
-    df_detalhes = reatores_processados[[
-        'nome_escola', 'id_reator', 'tipo_caixa', 'data_encheu', 'capacidade_litros', 
-        'residuo_kg', 'emissoes_evitadas_tco2eq'
-    ]].copy()
+    # Selecionar colunas disponíveis
+    colunas_detalhes = ['nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq']
+    if 'tipo_caixa' in reatores_processados.columns:
+        colunas_detalhes.insert(2, 'tipo_caixa')
+    
+    df_detalhes = reatores_processados[colunas_detalhes].copy()
     
     # Formatar valores no padrão brasileiro
     df_detalhes_formatado = df_detalhes.copy()
@@ -713,70 +778,62 @@ if not reatores_processados.empty:
     st.dataframe(df_detalhes_formatado, use_container_width=True)
 
 # Gráfico de status dos reatores
-st.header("📈 Status das Caixas")
+st.header("📈 Status dos Reatores")
 
-# Separar por tipo de caixa
-status_count_processamento = reatores_filtrados[reatores_filtrados['tipo_caixa'] == 'Processamento']['status_reator'].value_counts()
-status_count_biofertilizante = reatores_filtrados[reatores_filtrados['tipo_caixa'] == 'Biofertilizante']['status_reator'].value_counts()
+# Verificar se temos a coluna tipo_caixa para separar os gráficos
+if 'tipo_caixa' in reatores_filtrados.columns:
+    # Separar por tipo de caixa
+    status_count_processamento = reatores_filtrados[reatores_filtrados['tipo_caixa'] == 'Processamento']['status_reator'].value_counts()
+    status_count_biofertilizante = reatores_filtrados[reatores_filtrados['tipo_caixa'] == 'Biofertilizante']['status_reator'].value_counts()
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-with col1:
+    with col1:
+        if not status_count_processamento.empty:
+            # Formatar labels com números brasileiros
+            labels_formatados_processamento = []
+            for status, count in status_count_processamento.items():
+                labels_formatados_processamento.append(f"{status} ({formatar_br(count, 0)})")
+
+            fig1 = px.pie(
+                values=status_count_processamento.values,
+                names=labels_formatados_processamento,
+                title="Reatores de Processamento"
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("Nenhum reator de processamento encontrado")
+
+    with col2:
+        if not status_count_biofertilizante.empty:
+            # Formatar labels com números brasileiros
+            labels_formatados_biofertilizante = []
+            for status, count in status_count_biofertilizante.items():
+                labels_formatados_biofertilizante.append(f"{status} ({formatar_br(count, 0)})")
+
+            fig2 = px.pie(
+                values=status_count_biofertilizante.values,
+                names=labels_formatados_biofertilizante,
+                title="Caixas de Biofertilizante"
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Nenhuma caixa de biofertilizante encontrada")
+else:
+    # Gráfico único se não temos separação por tipo
+    status_count = reatores_filtrados['status_reator'].value_counts()
+    
     # Formatar labels com números brasileiros
-    labels_formatados_processamento = []
-    for status, count in status_count_processamento.items():
-        labels_formatados_processamento.append(f"{status} ({formatar_br(count, 0)})")
+    labels_formatados = []
+    for status, count in status_count.items():
+        labels_formatados.append(f"{status} ({formatar_br(count, 0)})")
 
-    fig1 = px.pie(
-        values=status_count_processamento.values,
-        names=labels_formatados_processamento,
-        title="Caixas de Processamento"
+    fig = px.pie(
+        values=status_count.values,
+        names=labels_formatados,
+        title="Status de Todos os Reatores"
     )
-    st.plotly_chart(fig1, use_container_width=True)
-
-with col2:
-    # Formatar labels com números brasileiros
-    labels_formatados_biofertilizante = []
-    for status, count in status_count_biofertilizante.items():
-        labels_formatados_biofertilizante.append(f"{status} ({formatar_br(count, 0)})")
-
-    fig2 = px.pie(
-        values=status_count_biofertilizante.values,
-        names=labels_formatados_biofertilizante,
-        title="Caixas de Biofertilizante"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-# Informações adicionais sobre a metodologia científica
-with st.expander("🔬 Metodologia Científica de Cálculo"):
-    st.markdown("""
-    **📊 Metodologia de Cálculo Baseada em Referências Científicas:**
-    
-    **Cenário Base (Aterro Sanitário):**
-    - **Metano (CH4):** IPCC (2006), UNFCCC (2016), Wang et al. (2023)
-    - **Óxido Nitroso (N2O):** Wang et al. (2017)
-    - **Fórmula IPCC:** DOC × DOCf × MCF × F × (16/12) × (1 - Ri) × (1 - OX)
-    
-    **Cenário Projeto (Vermicompostagem):**
-    - **Metano e Óxido Nitroso:** Yang et al. (2017)
-    - **Fatores específicos para compostagem com minhocas**
-    
-    **Parâmetros Utilizados:**
-    - **TOC (Carbono Orgânico Total):** 43,6% (Yang et al. 2017)
-    - **TN (Nitrogênio Total):** 14,2 g/kg (Yang et al. 2017)
-    - **CH4-C/TOC:** 0,13% (fração do carbono emitida como metano)
-    - **N2O-N/TN:** 0,92% (fração do nitrogênio emitida como óxido nitroso)
-    - **GWP-20 (IPCC AR6):** CH4 = 79,7; N2O = 273
-    
-    **🏗️ Sistema de Vermicompostagem:**
-    - Cada sistema: 4 caixas (200L total)
-    - 3 caixas para processamento (150L)
-    - 1 caixa para biofertilizante (50L) - não conta no cálculo
-    - Capacidade por caixa: 50 litros
-    - Densidade do resíduo: 0,5 kg/L
-    - Massa por caixa: 25 kg
-    - Massa total por sistema: 75 kg
-    """)
+    st.plotly_chart(fig, use_container_width=True)
 
 # Botão para atualizar dados
 if st.button("🔄 Atualizar Dados do Excel"):
