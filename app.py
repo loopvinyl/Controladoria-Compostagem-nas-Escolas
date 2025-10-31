@@ -24,7 +24,7 @@ st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de
 URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
 
 # =============================================================================
-# CONFIGURAÇÕES FIXAS - DENSIDADE PADRÃO
+# CONFIGURAÇÕES FIXAS - DENSIDADE PADRAO
 # =============================================================================
 
 DENSIDADE_PADRAO = 0.6  # kg/L - para resíduos de vegetais, frutas e borra de café
@@ -447,6 +447,45 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     return df_resultados, total_residuo, total_emissoes_evitadas, detalhes_calculo
 
 # =============================================================================
+# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
+# =============================================================================
+
+def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
+    """Analisa escolas ativas que possuem reatores ativos"""
+    
+    # Filtrar escolas ativas
+    if 'status' in df_escolas.columns:
+        escolas_ativas = df_escolas[df_escolas['status'].notna()].copy()
+    else:
+        escolas_ativas = df_escolas.copy()
+    
+    # Filtrar reatores ativos (qualquer texto na coluna status_reator)
+    if 'status_reator' in df_reatores.columns:
+        reatores_ativos = df_reatores[df_reatores['status_reator'].notna()].copy()
+    else:
+        reatores_ativos = pd.DataFrame()
+    
+    # Contar reatores ativos por escola
+    if not reatores_ativos.empty and 'id_escola' in reatores_ativos.columns:
+        contagem_reatores_por_escola = reatores_ativos.groupby('id_escola').size().reset_index(name='reatores_ativos')
+        
+        # Juntar com informações das escolas
+        escolas_com_reatores_ativos = escolas_ativas.merge(
+            contagem_reatores_por_escola, 
+            on='id_escola', 
+            how='left'
+        )
+        
+        # Preencher NaN com 0 para escolas sem reatores ativos
+        escolas_com_reatores_ativos['reatores_ativos'] = escolas_com_reatores_ativos['reatores_ativos'].fillna(0)
+        
+        return escolas_com_reatores_ativos
+    else:
+        # Se não há reatores ativos, retornar escolas com contagem zero
+        escolas_ativas['reatores_ativos'] = 0
+        return escolas_ativas
+
+# =============================================================================
 # INTERFACE PRINCIPAL
 # =============================================================================
 
@@ -500,8 +539,79 @@ with col3:
     st.metric("Reatores Cheios", formatar_br(reatores_cheios, 0))
 
 with col4:
-    reatores_ativos = len(df_reatores[df_reatores['status_reator'] == 'Ativo'])
+    # MODIFICAÇÃO: Considera reator ativo se tiver qualquer texto na coluna status_reator
+    reatores_ativos = len(df_reatores[df_reatores['status_reator'].notna()])
     st.metric("Reatores Ativos", formatar_br(reatores_ativos, 0))
+
+# =============================================================================
+# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
+# =============================================================================
+
+st.header("🏫 Análise de Escolas Ativas com Reatores Ativos")
+
+# Realizar análise
+escolas_com_reatores_ativos = analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores)
+
+# Métricas da análise
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    total_escolas_ativas = len(escolas_com_reatores_ativos)
+    st.metric("Escolas Ativas", formatar_br(total_escolas_ativas, 0))
+
+with col2:
+    escolas_com_reatores = len(escolas_com_reatores_ativos[escolas_com_reatores_ativos['reatores_ativos'] > 0])
+    st.metric("Escolas com Reatores Ativos", formatar_br(escolas_com_reatores, 0))
+
+with col3:
+    total_reatores_ativos_analise = escolas_com_reatores_ativos['reatores_ativos'].sum()
+    st.metric("Total de Reatores Ativos (Análise)", formatar_br(total_reatores_ativos_analise, 0))
+
+# Tabela detalhada
+st.subheader("📋 Detalhamento por Escola")
+
+# Selecionar colunas para exibição
+colunas_display = ['id_escola', 'nome_escola', 'reatores_ativos']
+if 'status' in escolas_com_reatores_ativos.columns:
+    colunas_display.insert(2, 'status')
+if 'data_implantacao' in escolas_com_reatores_ativos.columns:
+    colunas_display.append('data_implantacao')
+
+# Criar DataFrame para exibição
+df_display = escolas_com_reatores_ativos[colunas_display].copy()
+
+# Ordenar por quantidade de reatores ativos (decrescente)
+df_display = df_display.sort_values('reatores_ativos', ascending=False)
+
+# Adicionar formatação condicional
+def colorir_reatores_ativos(val):
+    if val > 0:
+        return 'background-color: #90EE90'  # Verde claro para reatores ativos
+    else:
+        return 'background-color: #FFCCCB'   # Vermelho claro para sem reatores
+
+# Aplicar estilo
+styled_df = df_display.style.applymap(colorir_reatores_ativos, subset=['reatores_ativos'])
+
+st.dataframe(styled_df, use_container_width=True)
+
+# Análise estatística
+st.subheader("📈 Estatísticas da Implantação")
+
+if not escolas_com_reatores_ativos.empty:
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        percentual_com_reatores = (escolas_com_reatores / total_escolas_ativas) * 100
+        st.metric("Taxa de Sucesso", f"{formatar_br(percentual_com_reatores, 1)}%")
+    
+    with col2:
+        media_reatores_por_escola = total_reatores_ativos_analise / max(escolas_com_reatores, 1)
+        st.metric("Média de Reatores/Escola", formatar_br(media_reatores_por_escola, 1))
+    
+    with col3:
+        escolas_sem_reatores = total_escolas_ativas - escolas_com_reatores
+        st.metric("Escolas sem Reatores Ativos", formatar_br(escolas_sem_reatores, 0))
 
 # Processar cálculos
 if escola_selecionada != "Todas as escolas":
