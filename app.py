@@ -871,6 +871,37 @@ if not escolas_com_reatores_ativos.empty:
         st.metric("Escolas sem Reatores Ativos", formatar_br(escolas_sem_reatores, 0))
 
 # =============================================================================
+# DETALHAMENTO DOS CRÉDITOS - IDÊNTICO (com valor por reator)
+# =============================================================================
+
+if not reatores_processados.empty:
+    st.header("📊 Detalhamento dos Créditos por Reator")
+    
+    preco_carbono_reais_por_tonelada = st.session_state.preco_carbono * st.session_state.taxa_cambio
+    
+    df_detalhes = reatores_processados[[
+        'nome_escola', 'id_reator', 'data_encheu', 'altura_cm', 'largura_cm', 'comprimento_cm',
+        'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq'
+    ]].copy()
+    
+    df_detalhes['valor_creditos_reais'] = df_detalhes['emissoes_evitadas_tco2eq'] * preco_carbono_reais_por_tonelada
+    
+    df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
+    df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
+    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
+    df_detalhes['data_encheu'] = pd.to_datetime(df_detalhes['data_encheu']).dt.strftime('%d/%m/%Y')
+    
+    df_detalhes['valor_creditos_reais'] = df_detalhes['valor_creditos_reais'].apply(
+        lambda x: formatar_moeda_br(x, "R$", 2)
+    )
+    
+    for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
+        if col in df_detalhes.columns:
+            df_detalhes[col] = df_detalhes[col].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A")
+    
+    st.dataframe(df_detalhes, use_container_width=True)
+
+# =============================================================================
 # DETALHAMENTO COMPLETO DOS CÁLCULOS - MODIFICADO: Inclui distribuição temporal
 # =============================================================================
 
@@ -1009,37 +1040,6 @@ if not reatores_processados.empty:
         Emissões Evitadas = {formatar_br(calc['emissoes_evitadas_tco2eq'], 3)} tCO₂eq
         ```
         """)
-
-# =============================================================================
-# DETALHAMENTO DOS CRÉDITOS - IDÊNTICO (com valor por reator)
-# =============================================================================
-
-if not reatores_processados.empty:
-    st.header("📊 Detalhamento dos Créditos por Reator")
-    
-    preco_carbono_reais_por_tonelada = st.session_state.preco_carbono * st.session_state.taxa_cambio
-    
-    df_detalhes = reatores_processados[[
-        'nome_escola', 'id_reator', 'data_encheu', 'altura_cm', 'largura_cm', 'comprimento_cm',
-        'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq'
-    ]].copy()
-    
-    df_detalhes['valor_creditos_reais'] = df_detalhes['emissoes_evitadas_tco2eq'] * preco_carbono_reais_por_tonelada
-    
-    df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
-    df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
-    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
-    df_detalhes['data_encheu'] = pd.to_datetime(df_detalhes['data_encheu']).dt.strftime('%d/%m/%Y')
-    
-    df_detalhes['valor_creditos_reais'] = df_detalhes['valor_creditos_reais'].apply(
-        lambda x: formatar_moeda_br(x, "R$", 2)
-    )
-    
-    for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
-        if col in df_detalhes.columns:
-            df_detalhes[col] = df_detalhes[col].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A")
-    
-    st.dataframe(df_detalhes, use_container_width=True)
 
 # =============================================================================
 # GRÁFICOS COM DADOS REAIS - IDÊNTICO
