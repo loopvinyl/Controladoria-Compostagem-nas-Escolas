@@ -907,16 +907,28 @@ if not reatores_processados.empty:
 if not reatores_processados.empty:
     st.header("📊 Detalhamento dos Créditos por Reator")
     
+    # Calcular preço do carbono em Reais por tCO₂eq
+    preco_carbono_reais_por_tonelada = st.session_state.preco_carbono * st.session_state.taxa_cambio
+    
+    # Criar DataFrame de detalhes
     df_detalhes = reatores_processados[[
         'nome_escola', 'id_reator', 'data_encheu', 'altura_cm', 'largura_cm', 'comprimento_cm',
         'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq'
     ]].copy()
+    
+    # ADIÇÃO DA NOVA COLUNA: calcular valor financeiro para cada reator
+    df_detalhes['valor_creditos_reais'] = df_detalhes['emissoes_evitadas_tco2eq'] * preco_carbono_reais_por_tonelada
     
     # Formatar valores
     df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
     df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
     df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
     df_detalhes['data_encheu'] = pd.to_datetime(df_detalhes['data_encheu']).dt.strftime('%d/%m/%Y')
+    
+    # Formatar a nova coluna de valor como moeda brasileira
+    df_detalhes['valor_creditos_reais'] = df_detalhes['valor_creditos_reais'].apply(
+        lambda x: formatar_moeda_br(x, "R$", 2)
+    )
     
     # Formatar dimensões
     for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
