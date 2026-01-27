@@ -528,32 +528,25 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
         return escolas_ativas
 
 # =============================================================================
-# ANÁLISE DE GASTOS
+# ANÁLISE DE GASTOS - CORRIGIDA
 # =============================================================================
 
 def analisar_gastos(df_gastos):
     """Analisa os gastos registrados"""
     if df_gastos.empty:
-        return pd.DataFrame(), 0, 0
+        return pd.DataFrame(), 0
     
     # Converter coluna valor para numérico
     if 'valor' in df_gastos.columns:
         # Remover "R$" e converter para float
-        df_gastos['valor_numerico'] = df_gastos['valor'].astype(str).str.replace('R\$', '').str.replace(',', '.').str.strip()
+        df_gastos['valor_numerico'] = df_gastos['valor'].astype(str).str.replace('R\$', '', regex=True).str.replace(',', '.').str.strip()
         df_gastos['valor_numerico'] = pd.to_numeric(df_gastos['valor_numerico'], errors='coerce')
         
         total_gastos = df_gastos['valor_numerico'].sum()
         
-        # Gastos por ano-mês
-        if 'data_compra' in df_gastos.columns:
-            df_gastos['ano_mes'] = df_gastos['data_compra'].dt.strftime('%Y-%m')
-            gastos_por_mes = df_gastos.groupby('ano_mes')['valor_numerico'].sum().reset_index()
-        else:
-            gastos_por_mes = pd.DataFrame()
-        
-        return df_gastos, total_gastos, gastos_por_mes
+        return df_gastos, total_gastos
     
-    return df_gastos, 0, pd.DataFrame()
+    return df_gastos, 0
 
 # =============================================================================
 # INTERFACE PRINCIPAL - COM REORDENAÇÃO
@@ -603,7 +596,7 @@ valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
 
 # Analisar gastos
-df_gastos_analisados, total_gastos, gastos_por_mes = analisar_gastos(df_gastos)
+df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 
 # =============================================================================
 # EXIBIÇÃO DOS DADOS REAIS - COM CRÉDITOS EM PRIMEIRO LUGAR
@@ -678,7 +671,7 @@ else:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
-# ANÁLISE DE GASTOS
+# ANÁLISE DE GASTOS - CORRIGIDA
 # =============================================================================
 
 st.header("💰 Análise de Gastos")
@@ -687,7 +680,7 @@ if not df_gastos.empty:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        total_gastos_br = formatar_moeda_br(total_gastos)
+        total_gastos_br = formatar_moeda_br(total_gastos, "R$", 2)
         st.metric("Total de Gastos", total_gastos_br)
     
     with col2:
@@ -697,36 +690,36 @@ if not df_gastos.empty:
     with col3:
         if total_gastos > 0 and total_emissoes > 0:
             custo_por_tonelada = total_gastos / total_emissoes
-            st.metric("Custo por tCO₂eq", formatar_moeda_br(custo_por_tonelada))
+            st.metric("Custo por tCO₂eq", formatar_moeda_br(custo_por_tonelada, "R$", 2))
         else:
-            st.metric("Custo por tCO₂eq", formatar_moeda_br(0))
+            st.metric("Custo por tCO₂eq", formatar_moeda_br(0, "R$", 2))
     
-    # Tabela de gastos
+    # Tabela de gastos - ORDENADA DO MAIS ANTIGO PARA O MAIS ATUAL
     st.subheader("📋 Detalhamento dos Gastos")
     
     df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor']].copy()
     
-    # Formatar data
+    # Formatar data e garantir ordenação correta
     if 'data_compra' in df_gastos_display.columns:
-        df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce').dt.strftime('%d/%m/%Y')
+        # Garantir que a coluna data_compra seja datetime
+        df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce')
+        # Ordenar do mais antigo para o mais atual (crescente)
+        df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=True)
+        # Formatar data para exibição
+        df_gastos_display['data_compra'] = df_gastos_display['data_compra'].dt.strftime('%d/%m/%Y')
     
-    # Ordenar por data
-    if 'data_compra' in df_gastos_display.columns:
-        df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=False)
+    # Formatar valor para o padrão brasileiro
+    if 'valor' in df_gastos_display.columns:
+        # Extrair valor numérico e formatar
+        df_gastos_display['valor_formatado'] = df_gastos_display['valor'].astype(str).apply(
+            lambda x: formatar_moeda_br(float(x.replace('R$', '').replace(',', '.').strip()), "R$", 2) 
+            if pd.notna(x) and x != '' else formatar_moeda_br(0, "R$", 2)
+        )
+        # Substituir a coluna original pela formatada
+        df_gastos_display['valor'] = df_gastos_display['valor_formatado']
+        df_gastos_display = df_gastos_display.drop('valor_formatado', axis=1)
     
     st.dataframe(df_gastos_display, use_container_width=True)
-    
-    # Gráfico de gastos por mês
-    if not gastos_por_mes.empty:
-        st.subheader("📈 Gastos por Mês")
-        fig_gastos = px.bar(
-            gastos_por_mes,
-            x='ano_mes',
-            y='valor_numerico',
-            title="Gastos por Mês",
-            labels={'ano_mes': 'Mês', 'valor_numerico': 'Valor (R$)'}
-        )
-        st.plotly_chart(fig_gastos, use_container_width=True)
 else:
     st.info("ℹ️ Nenhum gasto registrado no sistema.")
 
