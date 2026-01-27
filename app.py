@@ -255,7 +255,6 @@ def carregar_dados_excel(url):
         
         # Verificar abas disponíveis
         excel_file = pd.ExcelFile(url)
-        st.info(f"📋 Abas disponíveis no Excel: {excel_file.sheet_names}")
         
         # Ler as abas corretas
         df_escolas = pd.read_excel(url, sheet_name='escolas')
@@ -273,7 +272,6 @@ def carregar_dados_excel(url):
             df_reatores = df_reatores[df_reatores['id_reator'].astype(str).str.strip() != '']
         
         loading_placeholder.empty()
-        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas, {len(df_reatores)} reatores, {len(df_gastos)} gastos")
         
         # Converter colunas de data para formato brasileiro DD/MM/YYYY
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
@@ -608,9 +606,7 @@ df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 # EXIBIÇÃO DOS DADOS REAIS - COM CRÉDITOS EM PRIMEIRO LUGAR
 # =============================================================================
 
-st.header("📊 Dashboard de Compostagem com Minhocas - Dados Reais")
-
-# Informação sobre densidade fixa
+# Informação sobre densidade fixa - movida para o topo
 st.info(f"""
 **⚙️ Parâmetros de Cálculo Fixos:**
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L (padrão para resíduos de vegetais, frutas e borra de café)
