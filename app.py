@@ -22,12 +22,12 @@ st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # =============================================================================
-# CONFIGURAÇÕES FIXAS - MODIFICADO: Adicionado k_ano
+# CONFIGURAÇÕES FIXAS - MODIFICADO: Usar session state para K_ANO
 # =============================================================================
 
 URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem_real.xlsx"
 DENSIDADE_PADRAO = 0.6  # kg/L - para resíduos de vegetais, frutas e borra de café
-K_ANO = 0.06  # Taxa de decaimento anual do metano no aterro (ano⁻¹) - IPCC para resíduos alimentares
+K_ANO_PADRAO = 0.06  # Taxa de decaimento anual padrão (IPCC para resíduos alimentares)
 
 # =============================================================================
 # FUNÇÕES DE FORMATAÇÃO BRASILEIRA - IDÊNTICO
@@ -218,10 +218,11 @@ def exibir_cotacao_carbono():
     )
 
 # =============================================================================
-# INICIALIZAÇÃO DA SESSION STATE - IDÊNTICO
+# INICIALIZAÇÃO DA SESSION STATE - MODIFICADO: Removida declaração global
 # =============================================================================
 
 def inicializar_session_state():
+    """Inicializa todas as variáveis de session state necessárias"""
     if 'preco_carbono' not in st.session_state:
         preco_carbono, moeda, contrato_info, sucesso, fonte = obter_cotacao_carbono()
         st.session_state.preco_carbono = preco_carbono
@@ -244,7 +245,7 @@ def inicializar_session_state():
     if 'periodo_credito' not in st.session_state:
         st.session_state.periodo_credito = 10  # Período de crédito padrão em anos
     if 'k_ano' not in st.session_state:
-        st.session_state.k_ano = K_ANO  # Taxa de decaimento padrão
+        st.session_state.k_ano = K_ANO_PADRAO  # Taxa de decaimento padrão
 
 # =============================================================================
 # FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - IDÊNTICO
@@ -338,7 +339,7 @@ def carregar_dados_excel(url):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
-# FUNÇÕES DE CÁLCULO CIENTÍFICO - TOTALMENTE REVISADO
+# FUNÇÕES DE CÁLCULO CIENTÍFICO - MODIFICADO: Usar st.session_state.k_ano
 # =============================================================================
 
 def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=10):
@@ -391,8 +392,9 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     potencial_CH4_por_kg_total = DOC * DOCf * MCF * F * (16/12) * (1 - Ri) * (1 - OX)
     ch4_total_aterro = residuo_kg * potencial_CH4_por_kg_total
     
-    # Taxa de decaimento diária
-    k_dia = K_ANO / 365.0
+    # Taxa de decaimento diária (usando session state)
+    k_ano_atual = st.session_state.get('k_ano', K_ANO_PADRAO)
+    k_dia = k_ano_atual / 365.0
     
     # Período em dias
     dias_simulacao = periodo_anos * 365
@@ -443,16 +445,6 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     # N₂O total da compostagem (ocorre em ~50 dias)
     n2o_total_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
     
-    # Perfil temporal para vermicompostagem (50 dias) - NORMALIZADO
-    PERFIL_CH4_VERMI = np.array([
-        0.02, 0.02, 0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.05, 0.06,
-        0.07, 0.08, 0.09, 0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04,
-        0.03, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01,
-        0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005,
-        0.002, 0.002, 0.002, 0.002, 0.002, 0.001, 0.001, 0.001, 0.001, 0.001
-    ])
-    PERFIL_CH4_VERMI /= PERFIL_CH4_VERMI.sum()
-    
     # Considerando que as emissões ocorrem no primeiro ano
     ch4_emitido_compostagem_periodo = ch4_total_compostagem
     n2o_emitido_compostagem_periodo = n2o_total_compostagem
@@ -496,7 +488,7 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
             'capacidade_litros': capacidade_litros,
             'densidade_kg_l': DENSIDADE_PADRAO,
             'periodo_anos': periodo_anos,
-            'k_ano': K_ANO,
+            'k_ano': k_ano_atual,
             'fracao_ch4_emitida': fracao_ch4_emitida,
             'T': T,
             'DOC': DOC,
@@ -630,7 +622,7 @@ def analisar_gastos(df_gastos):
     return df_gastos, 0
 
 # =============================================================================
-# INTERFACE PRINCIPAL - MODIFICADO: Adicionado controle de período e k
+# INTERFACE PRINCIPAL - MODIFICADO: Removida declaração global
 # =============================================================================
 
 # Inicializar session state
@@ -664,8 +656,6 @@ with st.sidebar:
         help="Taxa de decaimento anual do metano no aterro (IPCC: 0.06 para resíduos alimentares)"
     )
     st.session_state.k_ano = k_ano
-    global K_ANO
-    K_ANO = k_ano
     
     st.info(f"""
     **📊 Parâmetros de cálculo:**
@@ -925,6 +915,7 @@ if not reatores_processados.empty:
 
     # Fórmulas matemáticas atualizadas
     with st.expander("📝 Ver Fórmulas Matemáticas Completas (CORRIGIDAS)"):
+        k_ano_atual = st.session_state.k_ano
         st.markdown(f"""
         **🧮 Fórmulas Utilizadas no Cálculo CORRIGIDO:**
 
@@ -950,8 +941,8 @@ if not reatores_processados.empty:
 
         **4. CH₄ Aterro Emitido (Período {periodo_credito} anos):**
         ```
-        k_dia = k_ano / 365 = {formatar_br(k_ano, 3)} / 365 = {formatar_br(k_ano/365, 6)} dia⁻¹
-        Fração emitida = 1 - exp(-k_ano × T) = 1 - exp(-{formatar_br(k_ano, 3)} × {periodo_credito})
+        k_dia = k_ano / 365 = {formatar_br(k_ano_atual, 3)} / 365 = {formatar_br(k_ano_atual/365, 6)} dia⁻¹
+        Fração emitida = 1 - exp(-k_ano × T) = 1 - exp(-{formatar_br(k_ano_atual, 3)} × {periodo_credito})
         Fração emitida = {formatar_br(calc['parametros']['fracao_ch4_emitida'] * 100, 1)}%
         
         CH₄ Emitido = CH₄ Total × Fração emitida
