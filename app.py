@@ -18,10 +18,10 @@ st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
 st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # =============================================================================
-# CONFIGURAÇÕES - URL DO EXCEL
+# CONFIGURAÇÕES - URL DO EXCEL CORRIGIDA
 # =============================================================================
 
-URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem.xlsx"
+URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem_real.xlsx"
 
 # =============================================================================
 # CONFIGURAÇÕES FIXAS - DENSIDADE PADRAO
@@ -243,63 +243,78 @@ def inicializar_session_state():
         st.session_state.cotacao_carregada = False
 
 # =============================================================================
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - CORRIGIDA
 # =============================================================================
 
 @st.cache_data
 def carregar_dados_excel(url):
     """Carrega os dados REAIS do Excel do GitHub"""
     try:
-        # Usar um placeholder para a mensagem de carregamento
         loading_placeholder = st.empty()
         loading_placeholder.info("📥 Carregando dados do Excel...")
         
-        # Primeiro, vamos diagnosticar as abas disponíveis
+        # Verificar abas disponíveis
         excel_file = pd.ExcelFile(url)
         st.info(f"📋 Abas disponíveis no Excel: {excel_file.sheet_names}")
         
-        # Ler as abas com os nomes corretos
+        # Ler as abas corretas
         df_escolas = pd.read_excel(url, sheet_name='escolas')
         df_reatores = pd.read_excel(url, sheet_name='reatores')
+        df_gastos = pd.read_excel(url, sheet_name='gastos')
         
-        # Limpar a mensagem de carregamento
         loading_placeholder.empty()
+        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas, {len(df_reatores)} reatores, {len(df_gastos)} gastos")
         
-        # Mostrar mensagem de sucesso
-        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas e {len(df_reatores)} reatores")
-        
-        # Converter colunas de data
+        # Converter colunas de data para formato brasileiro DD/MM/YYYY
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
-                df_escolas[col] = pd.to_datetime(df_escolas[col], errors='coerce')
-                
+                # Converter string no formato DD/MM/YYYY para datetime
+                df_escolas[col] = pd.to_datetime(df_escolas[col], dayfirst=True, errors='coerce')
+        
         colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
         for col in colunas_data_reatores:
             if col in df_reatores.columns:
-                df_reatores[col] = pd.to_datetime(df_reatores[col], errors='coerce')
-                
-        return df_escolas, df_reatores
+                df_reatores[col] = pd.to_datetime(df_reatores[col], dayfirst=True, errors='coerce')
+        
+        if 'data_compra' in df_gastos.columns:
+            df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], dayfirst=True, errors='coerce')
+        
+        # Converter colunas numéricas
+        if 'capacidade_total_sistema_litros' in df_escolas.columns:
+            df_escolas['capacidade_total_sistema_litros'] = pd.to_numeric(df_escolas['capacidade_total_sistema_litros'], errors='coerce')
+        
+        if 'capacidade_litros' in df_reatores.columns:
+            # Substituir '???' por NaN
+            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].replace('???', np.nan)
+            df_reatores['capacidade_litros'] = pd.to_numeric(df_reatores['capacidade_litros'], errors='coerce')
+        
+        # Calcular volume se as dimensões existirem
+        if all(col in df_reatores.columns for col in ['altura_cm', 'largura_cm', 'comprimento_cm']):
+            df_reatores['volume_calculado_litros'] = df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm'] / 1000
+        
+        # Usar volume calculado se capacidade não estiver disponível
+        if 'capacidade_litros' not in df_reatores.columns or df_reatores['capacidade_litros'].isna().all():
+            if 'volume_calculado_litros' in df_reatores.columns:
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros']
+        
+        # Preencher capacidade padrão de 100L se ainda estiver vazia
+        df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
+        
+        return df_escolas, df_reatores, df_gastos
         
     except Exception as e:
-        # Limpar mensagem de carregamento em caso de erro
         if 'loading_placeholder' in locals():
             loading_placeholder.empty()
         st.error(f"❌ Erro ao carregar dados do Excel: {e}")
         
-        # Diagnóstico detalhado
         try:
             excel_file = pd.ExcelFile(url)
             st.error(f"📋 Abas encontradas: {excel_file.sheet_names}")
-            st.error("🔍 Procurando por 'reatores' nas abas...")
-            for sheet in excel_file.sheet_names:
-                if 'reator' in sheet.lower():
-                    st.error(f"→ Possível match: '{sheet}'")
         except Exception as diag_error:
             st.error(f"❌ Erro no diagnóstico: {diag_error}")
             
-        st.error("📋 Verifique se o arquivo Excel existe no repositório GitHub")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
 # FUNÇÕES DE CÁLCULO CIENTÍFICO COM DENSIDADE FIXA
@@ -407,7 +422,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     detalhes_calculo = []
     
     for _, reator in reatores_cheios.iterrows():
-        capacidade = reator['capacidade_litros'] if 'capacidade_litros' in reator else 100
+        capacidade = reator['capacidade_litros']
         resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade)
         residuo_kg = resultado_detalhado['residuo_kg']
         emissoes_evitadas = resultado_detalhado['emissoes_evitadas_tco2eq']
@@ -455,7 +470,7 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
     
     # Filtrar escolas ativas
     if 'status' in df_escolas.columns:
-        escolas_ativas = df_escolas[df_escolas['status'].notna()].copy()
+        escolas_ativas = df_escolas[df_escolas['status'] == 'Ativo'].copy()
     else:
         escolas_ativas = df_escolas.copy()
     
@@ -486,6 +501,31 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
         return escolas_ativas
 
 # =============================================================================
+# ANÁLISE DE GASTOS
+# =============================================================================
+
+def analisar_gastos(df_gastos):
+    """Analisa os gastos registrados"""
+    if df_gastos.empty:
+        return pd.DataFrame(), 0, 0
+    
+    # Converter coluna valor para numérico
+    if 'valor' in df_gastos.columns:
+        # Remover "R$" e converter para float
+        df_gastos['valor_numerico'] = df_gastos['valor'].astype(str).str.replace('R\$', '').str.replace(',', '.').str.strip()
+        df_gastos['valor_numerico'] = pd.to_numeric(df_gastos['valor_numerico'], errors='coerce')
+        
+        total_gastos = df_gastos['valor_numerico'].sum()
+        
+        # Gastos por ano-mês
+        df_gastos['ano_mes'] = df_gastos['data_compra'].dt.strftime('%Y-%m')
+        gastos_por_mes = df_gastos.groupby('ano_mes')['valor_numerico'].sum().reset_index()
+        
+        return df_gastos, total_gastos, gastos_por_mes
+    
+    return df_gastos, 0, pd.DataFrame()
+
+# =============================================================================
 # INTERFACE PRINCIPAL - COM REORDENAÇÃO
 # =============================================================================
 
@@ -493,7 +533,7 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
 inicializar_session_state()
 
 # Carregar dados REAIS
-df_escolas, df_reatores = carregar_dados_excel(URL_EXCEL)
+df_escolas, df_reatores, df_gastos = carregar_dados_excel(URL_EXCEL)
 
 # Verificar se os dados foram carregados
 if df_escolas.empty or df_reatores.empty:
@@ -531,6 +571,9 @@ taxa_cambio = st.session_state.taxa_cambio
 
 valor_eur = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "€")
 valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", taxa_cambio)
+
+# Analisar gastos
+df_gastos_analisados, total_gastos, gastos_por_mes = analisar_gastos(df_gastos)
 
 # =============================================================================
 # EXIBIÇÃO DOS DADOS REAIS - COM CRÉDITOS EM PRIMEIRO LUGAR
@@ -603,6 +646,57 @@ else:
     
     with col4:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
+
+# =============================================================================
+# ANÁLISE DE GASTOS
+# =============================================================================
+
+st.header("💰 Análise de Gastos")
+
+if not df_gastos.empty:
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        total_gastos_br = formatar_moeda_br(total_gastos)
+        st.metric("Total de Gastos", total_gastos_br)
+    
+    with col2:
+        total_itens = len(df_gastos)
+        st.metric("Total de Itens", formatar_br(total_itens, 0))
+    
+    with col3:
+        if total_gastos > 0 and total_emissoes > 0:
+            custo_por_tonelada = total_gastos / total_emissoes
+            st.metric("Custo por tCO₂eq", formatar_moeda_br(custo_por_tonelada))
+        else:
+            st.metric("Custo por tCO₂eq", formatar_moeda_br(0))
+    
+    # Tabela de gastos
+    st.subheader("📋 Detalhamento dos Gastos")
+    
+    df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor']].copy()
+    
+    # Formatar data
+    df_gastos_display['data_compra'] = df_gastos_display['data_compra'].dt.strftime('%d/%m/%Y')
+    
+    # Ordenar por data
+    df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=False)
+    
+    st.dataframe(df_gastos_display, use_container_width=True)
+    
+    # Gráfico de gastos por mês
+    if not gastos_por_mes.empty:
+        st.subheader("📈 Gastos por Mês")
+        fig_gastos = px.bar(
+            gastos_por_mes,
+            x='ano_mes',
+            y='valor_numerico',
+            title="Gastos por Mês",
+            labels={'ano_mes': 'Mês', 'valor_numerico': 'Valor (R$)'}
+        )
+        st.plotly_chart(fig_gastos, use_container_width=True)
+else:
+    st.info("ℹ️ Nenhum gasto registrado no sistema.")
 
 # =============================================================================
 # ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
@@ -775,11 +869,11 @@ if not reatores_processados.empty:
 
 st.header("📋 Dados das Escolas")
 
-# Colunas completas conforme seu Excel
+# Colunas conforme seu Excel
 colunas_escolas = [
     'id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 
     'observacoes', 'capacidade_total_sistema_litros', 'num_caixas_processamento', 
-    'num_caixas_biofertilizante', 'litragem'
+    'num_caixas_líquido'
 ]
 
 # Filtrar apenas colunas que existem no DataFrame
@@ -793,11 +887,11 @@ if colunas_escolas_disponiveis:
     colunas_data = ['data_implantacao', 'ultima_visita']
     for col in colunas_data:
         if col in df_escolas_display.columns:
-            df_escolas_display[col] = df_escolas_display[col].dt.strftime('%d/%m/%Y')
+            df_escolas_display[col] = pd.to_datetime(df_escolas_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
     
     # Formatar colunas numéricas
     colunas_numericas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 
-                         'num_caixas_biofertilizante', 'litragem']
+                         'num_caixas_líquido']
     for col in colunas_numericas:
         if col in df_escolas_display.columns:
             df_escolas_display[col] = df_escolas_display[col].apply(
@@ -815,7 +909,13 @@ else:
 
 st.header("📋 Dados dos Reatores")
 
-colunas_reatores = ['id_reator', 'id_escola', 'capacidade_litros', 'tipo_caixa', 'status_reator', 'data_ativacao', 'data_encheu', 'data_colheita', 'observacoes']
+colunas_reatores = [
+    'id_reator', 'id_escola', 'altura_cm', 'largura_cm', 'comprimento_cm', 
+    'volume_calculado_litros', 'peso_estimado_kg', 'capacidade_litros', 
+    'tipo_caixa', 'status_reator', 'data_ativacao', 'data_encheu', 
+    'data_colheita', 'sólido_kg', 'líquido_litros', 'observacoes'
+]
+
 colunas_reatores_disponiveis = [col for col in colunas_reatores if col in df_reatores.columns]
 
 if colunas_reatores_disponiveis:
@@ -825,12 +925,33 @@ if colunas_reatores_disponiveis:
     colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
     for col in colunas_data_reatores:
         if col in df_reatores_display.columns:
-            df_reatores_display[col] = df_reatores_display[col].dt.strftime('%d/%m/%Y')
+            df_reatores_display[col] = pd.to_datetime(df_reatores_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
     
-    if 'capacidade_litros' in df_reatores_display.columns:
-        df_reatores_display['capacidade_litros'] = df_reatores_display['capacidade_litros'].apply(
-            lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A"
+    # Formatar colunas numéricas
+    colunas_numericas = [
+        'altura_cm', 'largura_cm', 'comprimento_cm', 'volume_calculado_litros',
+        'peso_estimado_kg', 'capacidade_litros', 'sólido_kg', 'líquido_litros'
+    ]
+    
+    for col in colunas_numericas:
+        if col in df_reatores_display.columns:
+            df_reatores_display[col] = df_reatores_display[col].apply(
+                lambda x: formatar_br(x, 1) if pd.notna(x) else "N/A"
+            )
+    
+    # Adicionar nome da escola se disponível
+    if 'id_escola' in df_reatores_display.columns and 'nome_escola' in df_escolas.columns:
+        df_reatores_display = df_reatores_display.merge(
+            df_escolas[['id_escola', 'nome_escola']],
+            on='id_escola',
+            how='left'
         )
+        # Reordenar colunas para mostrar nome da escola primeiro
+        cols = list(df_reatores_display.columns)
+        if 'nome_escola' in cols:
+            cols.remove('nome_escola')
+            cols.insert(2, 'nome_escola')
+            df_reatores_display = df_reatores_display[cols]
     
     st.dataframe(df_reatores_display, use_container_width=True)
 else:
@@ -852,6 +973,7 @@ if not reatores_processados.empty:
     df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
     df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
     df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
+    df_detalhes['data_encheu'] = pd.to_datetime(df_detalhes['data_encheu']).dt.strftime('%d/%m/%Y')
     
     st.dataframe(df_detalhes, use_container_width=True)
 
@@ -864,16 +986,19 @@ st.header("📈 Status dos Reatores")
 if 'status_reator' in df_reatores.columns:
     status_count = df_reatores['status_reator'].value_counts()
     
-    labels_formatados = []
-    for status, count in status_count.items():
-        labels_formatados.append(f"{status} ({formatar_br(count, 0)})")
+    if not status_count.empty:
+        labels_formatados = []
+        for status, count in status_count.items():
+            labels_formatados.append(f"{status} ({formatar_br(count, 0)})")
 
-    fig = px.pie(
-        values=status_count.values,
-        names=labels_formatados,
-        title="Distribuição dos Status dos Reatores"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        fig = px.pie(
+            values=status_count.values,
+            names=labels_formatados,
+            title="Distribuição dos Status dos Reatores"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("ℹ️ Sem dados de status para reatores")
 else:
     st.info("ℹ️ Coluna 'status_reator' não encontrada para gerar gráfico")
 
@@ -883,16 +1008,19 @@ st.header("🏫 Status das Escolas")
 if 'status' in df_escolas.columns:
     status_escolas_count = df_escolas['status'].value_counts()
     
-    labels_escolas_formatados = []
-    for status, count in status_escolas_count.items():
-        labels_escolas_formatados.append(f"{status} ({formatar_br(count, 0)})")
+    if not status_escolas_count.empty:
+        labels_escolas_formatados = []
+        for status, count in status_escolas_count.items():
+            labels_escolas_formatados.append(f"{status} ({formatar_br(count, 0)})")
 
-    fig2 = px.pie(
-        values=status_escolas_count.values,
-        names=labels_escolas_formatados,
-        title="Distribuição dos Status das Escolas"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+        fig2 = px.pie(
+            values=status_escolas_count.values,
+            names=labels_escolas_formatados,
+            title="Distribuição dos Status das Escolas"
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("ℹ️ Sem dados de status para escolas")
 else:
     st.info("ℹ️ Coluna 'status' não encontrada para gerar gráfico")
 
