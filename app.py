@@ -892,104 +892,10 @@ if not reatores_processados.empty:
         ```
         """)
 
+# REMOVIDAS AS SEÇÕES DE DADOS DAS ESCOLAS E REATORES
 # =============================================================================
-# TABELAS COM DADOS REAIS - VERSÃO CORRIGIDA
+# SEÇÃO DE DADOS DAS ESCOLAS E REATORES REMOVIDA CONFORME SOLICITADO
 # =============================================================================
-
-st.header("📋 Dados das Escolas")
-
-# Colunas conforme seu Excel
-colunas_escolas = [
-    'id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 
-    'observacoes', 'capacidade_total_sistema_litros', 'num_caixas_processamento', 
-    'num_caixas_líquido'
-]
-
-# Filtrar apenas colunas que existem no DataFrame
-colunas_escolas_disponiveis = [col for col in colunas_escolas if col in df_escolas.columns]
-
-if colunas_escolas_disponiveis:
-    # Criar cópia para formatação
-    df_escolas_display = df_escolas[colunas_escolas_disponiveis].copy()
-    
-    # Formatar colunas de data para o padrão brasileiro DD/MM/YYYY
-    colunas_data = ['data_implantacao', 'ultima_visita']
-    for col in colunas_data:
-        if col in df_escolas_display.columns:
-            df_escolas_display[col] = pd.to_datetime(df_escolas_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
-    
-    # Formatar colunas numéricas
-    colunas_numericas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 
-                         'num_caixas_líquido']
-    for col in colunas_numericas:
-        if col in df_escolas_display.columns:
-            df_escolas_display[col] = df_escolas_display[col].apply(
-                lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A"
-            )
-    
-    st.dataframe(df_escolas_display, use_container_width=True)
-    
-    # Mostrar informações sobre colunas faltantes
-    colunas_faltantes = [col for col in colunas_escolas if col not in df_escolas.columns]
-    if colunas_faltantes:
-        st.info(f"ℹ️ Colunas não encontradas no Excel: {', '.join(colunas_faltantes)}")
-else:
-    st.warning("ℹ️ Nenhuma coluna de escolas disponível no formato esperado")
-
-st.header("📋 Dados dos Reatores")
-
-colunas_reatores = [
-    'id_reator', 'id_escola', 'altura_cm', 'largura_cm', 'comprimento_cm', 
-    'volume_calculado_litros', 'peso_estimado_kg', 'capacidade_litros', 
-    'tipo_caixa', 'status_reator', 'data_ativacao', 'data_encheu', 
-    'data_colheita', 'sólido_kg', 'líquido_litros', 'observacoes'
-]
-
-colunas_reatores_disponiveis = [col for col in colunas_reatores if col in df_reatores.columns]
-
-if colunas_reatores_disponiveis:
-    df_reatores_display = df_reatores[colunas_reatores_disponiveis].copy()
-    
-    # Formatar datas dos reatores
-    colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
-    for col in colunas_data_reatores:
-        if col in df_reatores_display.columns:
-            df_reatores_display[col] = pd.to_datetime(df_reatores_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
-    
-    # Formatar colunas numéricas
-    colunas_numericas = [
-        'altura_cm', 'largura_cm', 'comprimento_cm', 'volume_calculado_litros',
-        'peso_estimado_kg', 'capacidade_litros', 'sólido_kg', 'líquido_litros'
-    ]
-    
-    for col in colunas_numericas:
-        if col in df_reatores_display.columns:
-            df_reatores_display[col] = df_reatores_display[col].apply(
-                lambda x: formatar_br(x, 1) if pd.notna(x) else "N/A"
-            )
-    
-    # Adicionar nome da escola se disponível
-    if 'id_escola' in df_reatores_display.columns and 'nome_escola' in df_escolas.columns:
-        df_reatores_display = df_reatores_display.merge(
-            df_escolas[['id_escola', 'nome_escola']],
-            on='id_escola',
-            how='left'
-        )
-        # Reordenar colunas para mostrar nome da escola primeiro
-        cols = list(df_reatores_display.columns)
-        if 'nome_escola' in cols:
-            cols.remove('nome_escola')
-            cols.insert(2, 'nome_escola')
-            df_reatores_display = df_reatores_display[cols]
-    
-    st.dataframe(df_reatores_display, use_container_width=True)
-    
-    # Mostrar informações sobre colunas faltantes
-    colunas_faltantes_reatores = [col for col in colunas_reatores if col not in df_reatores.columns]
-    if colunas_faltantes_reatores:
-        st.info(f"ℹ️ Colunas não encontradas no Excel para reatores: {', '.join(colunas_faltantes_reatores)}")
-else:
-    st.warning("ℹ️ Nenhuma coluna de reatores disponível no formato esperado")
 
 # =============================================================================
 # DETALHAMENTO DOS CRÉDITOS (se houver reatores processados)
