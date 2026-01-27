@@ -339,7 +339,7 @@ def carregar_dados_excel(url):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
-# FUNÇÕES DE CÁLCULO CIENTÍFICO - MODIFICADO: Usar st.session_state.k_ano
+# FUNÇÕES DE CÁLCULO CIENTÍFICO - MODIFICADO: Incluir E_medio_ajust
 # =============================================================================
 
 def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=10):
@@ -423,7 +423,7 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     E_medio = f_aberto * E_aberto + (1 - f_aberto) * E_fechado
     
     fator_umid = (1 - umidade) / (1 - 0.55)
-    E_medio_ajust = E_medio * fator_umid
+    E_medio_ajust = E_medio * fator_umid  # ADICIONADO: cálculo de E_medio_ajust
     
     # Emissão total de N₂O do aterro (kg)
     n2o_total_aterro = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
@@ -501,7 +501,11 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
             'GWP_CH4_20': GWP_CH4_20,
             'GWP_N2O_20': GWP_N2O_20,
             'massa_exposta_kg': massa_exposta_kg,
-            'h_exposta': h_exposta
+            'h_exposta': h_exposta,
+            'f_aberto': f_aberto,
+            'E_medio': E_medio,
+            'E_medio_ajust': E_medio_ajust,  # ADICIONADO: Esta é a chave que estava faltando
+            'fator_umid': fator_umid
         }
     }
 
@@ -952,9 +956,25 @@ if not reatores_processados.empty:
 
         **5. N₂O Aterro (período 5 dias):**
         ```
-        N₂O Aterro = Resíduo × E_médio × (44/28) ÷ 1.000.000
+        f_aberto = (massa_exposta / resíduo) × (horas_expostas / 24)
+        f_aberto = ({formatar_br(calc['parametros']['massa_exposta_kg'], 0)} / {formatar_br(calc['residuo_kg'], 1)}) × ({formatar_br(calc['parametros']['h_exposta'], 0)} / 24)
+        f_aberto = {formatar_br(calc['parametros']['f_aberto'], 3)}
+        
+        E_medio = f_aberto × E_aberto + (1 - f_aberto) × E_fechado
+        E_medio = {formatar_br(calc['parametros']['f_aberto'], 3)} × 1,91 + (1 - {formatar_br(calc['parametros']['f_aberto'], 3)}) × 2,15
+        E_medio = {formatar_br(calc['parametros']['E_medio'], 3)}
+        
+        fator_umid = (1 - umidade) / (1 - 0,55)
+        fator_umid = (1 - {formatar_br(calc['parametros']['umidade'], 2)}) / (1 - 0,55)
+        fator_umid = {formatar_br(calc['parametros']['fator_umid'], 3)}
+        
+        E_medio_ajust = E_medio × fator_umid
+        E_medio_ajust = {formatar_br(calc['parametros']['E_medio'], 3)} × {formatar_br(calc['parametros']['fator_umid'], 3)}
+        E_medio_ajust = {formatar_br(calc['parametros']['E_medio_ajust'], 3)}
+        
+        N₂O Aterro = Resíduo × E_medio_ajust × (44/28) ÷ 1.000.000
         N₂O Aterro = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['E_medio_ajust'], 3)} × 1,571 ÷ 1.000.000
-        N₂O Aterro = {formatar_br(calc['n2o_emitido_aterro_periodo'], 6)} kg
+        N₂O Aterro = {formatar_br(calc['n2o_total_aterro'], 6)} kg
         ```
 
         **6. CH₄ Compostagem (período 50 dias):**
