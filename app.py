@@ -262,6 +262,16 @@ def carregar_dados_excel(url):
         df_reatores = pd.read_excel(url, sheet_name='reatores')
         df_gastos = pd.read_excel(url, sheet_name='gastos')
         
+        # CORREÇÃO: Remover linhas completamente vazias
+        df_reatores = df_reatores.dropna(how='all')
+        df_escolas = df_escolas.dropna(how='all')
+        df_gastos = df_gastos.dropna(how='all')
+        
+        # CORREÇÃO: Remover linhas onde id_reator está vazio ou é NaN
+        if 'id_reator' in df_reatores.columns:
+            df_reatores = df_reatores.dropna(subset=['id_reator'])
+            df_reatores = df_reatores[df_reatores['id_reator'].astype(str).str.strip() != '']
+        
         loading_placeholder.empty()
         st.success(f"✅ Dados carregados: {len(df_escolas)} escolas, {len(df_reatores)} reatores, {len(df_gastos)} gastos")
         
@@ -270,15 +280,25 @@ def carregar_dados_excel(url):
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
                 # Converter string no formato DD/MM/YYYY para datetime
-                df_escolas[col] = pd.to_datetime(df_escolas[col], dayfirst=True, errors='coerce')
+                try:
+                    df_escolas[col] = pd.to_datetime(df_escolas[col], dayfirst=True, errors='coerce')
+                except:
+                    # Tentar outro formato se o primeiro falhar
+                    df_escolas[col] = pd.to_datetime(df_escolas[col], errors='coerce')
         
         colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
         for col in colunas_data_reatores:
             if col in df_reatores.columns:
-                df_reatores[col] = pd.to_datetime(df_reatores[col], dayfirst=True, errors='coerce')
+                try:
+                    df_reatores[col] = pd.to_datetime(df_reatores[col], dayfirst=True, errors='coerce')
+                except:
+                    df_reatores[col] = pd.to_datetime(df_reatores[col], errors='coerce')
         
         if 'data_compra' in df_gastos.columns:
-            df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], dayfirst=True, errors='coerce')
+            try:
+                df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], dayfirst=True, errors='coerce')
+            except:
+                df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], errors='coerce')
         
         # Converter colunas numéricas
         if 'capacidade_total_sistema_litros' in df_escolas.columns:
@@ -287,19 +307,26 @@ def carregar_dados_excel(url):
         if 'capacidade_litros' in df_reatores.columns:
             # Substituir '???' por NaN
             df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].replace('???', np.nan)
+            # Converter para numérico
             df_reatores['capacidade_litros'] = pd.to_numeric(df_reatores['capacidade_litros'], errors='coerce')
         
-        # Calcular volume se as dimensões existirem
-        if all(col in df_reatores.columns for col in ['altura_cm', 'largura_cm', 'comprimento_cm']):
-            df_reatores['volume_calculado_litros'] = df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm'] / 1000
+        # Calcular volume se as dimensões existirem e estiverem preenchidas
+        dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
+        if all(col in df_reatores.columns for col in dimensoes_cols):
+            # Verificar se as dimensões não são todas NaN
+            if df_reatores[dimensoes_cols].notna().any().any():
+                df_reatores['volume_calculado_litros'] = (df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm']) / 1000
+                # Arredondar para 2 casas decimais
+                df_reatores['volume_calculado_litros'] = df_reatores['volume_calculado_litros'].round(2)
         
         # Usar volume calculado se capacidade não estiver disponível
-        if 'capacidade_litros' not in df_reatores.columns or df_reatores['capacidade_litros'].isna().all():
-            if 'volume_calculado_litros' in df_reatores.columns:
-                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros']
+        if 'capacidade_litros' in df_reatores.columns and 'volume_calculado_litros' in df_reatores.columns:
+            mask = df_reatores['capacidade_litros'].isna()
+            df_reatores.loc[mask, 'capacidade_litros'] = df_reatores.loc[mask, 'volume_calculado_litros']
         
         # Preencher capacidade padrão de 100L se ainda estiver vazia
-        df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
+        if 'capacidade_litros' in df_reatores.columns:
+            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
         
         return df_escolas, df_reatores, df_gastos
         
@@ -518,8 +545,11 @@ def analisar_gastos(df_gastos):
         total_gastos = df_gastos['valor_numerico'].sum()
         
         # Gastos por ano-mês
-        df_gastos['ano_mes'] = df_gastos['data_compra'].dt.strftime('%Y-%m')
-        gastos_por_mes = df_gastos.groupby('ano_mes')['valor_numerico'].sum().reset_index()
+        if 'data_compra' in df_gastos.columns:
+            df_gastos['ano_mes'] = df_gastos['data_compra'].dt.strftime('%Y-%m')
+            gastos_por_mes = df_gastos.groupby('ano_mes')['valor_numerico'].sum().reset_index()
+        else:
+            gastos_por_mes = pd.DataFrame()
         
         return df_gastos, total_gastos, gastos_por_mes
     
@@ -677,10 +707,12 @@ if not df_gastos.empty:
     df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor']].copy()
     
     # Formatar data
-    df_gastos_display['data_compra'] = df_gastos_display['data_compra'].dt.strftime('%d/%m/%Y')
+    if 'data_compra' in df_gastos_display.columns:
+        df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce').dt.strftime('%d/%m/%Y')
     
     # Ordenar por data
-    df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=False)
+    if 'data_compra' in df_gastos_display.columns:
+        df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=False)
     
     st.dataframe(df_gastos_display, use_container_width=True)
     
@@ -954,6 +986,11 @@ if colunas_reatores_disponiveis:
             df_reatores_display = df_reatores_display[cols]
     
     st.dataframe(df_reatores_display, use_container_width=True)
+    
+    # Mostrar informações sobre colunas faltantes
+    colunas_faltantes_reatores = [col for col in colunas_reatores if col not in df_reatores.columns]
+    if colunas_faltantes_reatores:
+        st.info(f"ℹ️ Colunas não encontradas no Excel para reatores: {', '.join(colunas_faltantes_reatores)}")
 else:
     st.warning("ℹ️ Nenhuma coluna de reatores disponível no formato esperado")
 
