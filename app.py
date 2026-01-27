@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 
 st.set_page_config(
-    page_title="♻️ Compostagem nas Escolas - Dashboard Científico",
+    page_title="Compostagem nas Escolas - Dashboard Cientifico",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -84,7 +84,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 class="main-header">♻️ Sistema de Compostagem nas Escolas</h1>', unsafe_allow_html=True)
-st.markdown("### 📊 Dashboard Científico para Cálculo de Créditos de Carbono")
+st.markdown("### 📊 Dashboard Cientifico para Calculo de Creditos de Carbono")
 st.markdown("---")
 
 # =============================================================================
@@ -92,20 +92,20 @@ st.markdown("---")
 # =============================================================================
 
 URL_EXCEL = "https://raw.githubusercontent.com/loopvinyl/Controladoria-Compostagem-nas-Escolas/main/dados_vermicompostagem_real.xlsx"
-DENSIDADE_PADRAO = 0.6  # kg/L - para resíduos de vegetais, frutas e borra de café
-K_ANO_PADRAO = 0.06  # Taxa de decaimento anual padrão (IPCC para resíduos alimentares)
+DENSIDADE_PADRAO = 0.6  # kg/L - para residuos de vegetais, frutas e borra de café
+K_ANO_PADRAO = 0.06  # Taxa de decaimento anual padrao (IPCC para residuos alimentares)
 
 # NOVOS: Fatores de incerteza
 FATOR_INCERTEZA_CH4 = 1.2  # ±20% para CH₄
 FATOR_INCERTEZA_N2O = 1.5  # ±50% para N₂O
-FATOR_EFICIENCIA_COMPOSTAGEM = 0.9  # 90% eficiência na compostagem
+FATOR_EFICIENCIA_COMPOSTAGEM = 0.9  # 90% eficiencia na compostagem
 
 # =============================================================================
 # FUNÇÕES AVANÇADAS DE FORMATAÇÃO
 # =============================================================================
 
 def formatar_br(numero, casas_decimais=2):
-    """Formata números no padrão brasileiro: 1.234,56"""
+    """Formata numeros no padrao brasileiro: 1.234,56"""
     if numero is None or pd.isna(numero):
         return "N/A"
     
@@ -120,11 +120,11 @@ def formatar_br(numero, casas_decimais=2):
         return "N/A"
 
 def formatar_moeda_br(valor, simbolo="R$", casas_decimais=2):
-    """Formata valores monetários no padrão brasileiro: R$ 1.234,56"""
+    """Formata valores monetarios no padrao brasileiro: R$ 1.234,56"""
     return f"{simbolo} {formatar_br(valor, casas_decimais)}"
 
 def formatar_tco2eq(valor):
-    """Formata valores de tCO₂eq no padrão brasileiro"""
+    """Formata valores de tCO₂eq no padrao brasileiro"""
     return f"{formatar_br(valor, 3)} tCO₂eq"
 
 def formatar_porcentagem(valor, casas_decimais=1):
@@ -136,7 +136,7 @@ def formatar_porcentagem(valor, casas_decimais=1):
 # =============================================================================
 
 def obter_cotacao_carbono_multifonte():
-    """Obtém cotação do carbono de múltiplas fontes"""
+    """Obtem cotacao do carbono de multiplas fontes"""
     fontes = []
     
     # Fonte 1: Investing.com
@@ -149,7 +149,7 @@ def obter_cotacao_carbono_multifonte():
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Múltiplos seletores
+        # Multiplos seletores
         selectores = [
             '[data-test="instrument-price-last"]',
             '.text-2xl',
@@ -169,28 +169,28 @@ def obter_cotacao_carbono_multifonte():
                             'preco': preco,
                             'moeda': '€',
                             'fonte': 'Investing.com',
-                            'confiança': 0.9
+                            'confianca': 0.9
                         })
                         break
     except:
         pass
     
-    # Fonte 2: API de referência (fallback)
+    # Fonte 2: API de referencia (fallback)
     if not fontes:
         fontes.append({
             'preco': 85.50,
             'moeda': '€',
-            'fonte': 'Referência (média histórica)',
-            'confiança': 0.7
+            'fonte': 'Referencia (media historica)',
+            'confianca': 0.7
         })
     
     # Seleciona a melhor fonte
-    melhor_fonte = max(fontes, key=lambda x: x['confiança'])
+    melhor_fonte = max(fontes, key=lambda x: x['confianca'])
     
     return melhor_fonte['preco'], melhor_fonte['moeda'], melhor_fonte['fonte'], True, melhor_fonte['fonte']
 
 def obter_cotacao_euro_real_multifonte():
-    """Obtém cotação EUR/BRL de múltiplas fontes"""
+    """Obtem cotacao EUR/BRL de multiplas fontes"""
     try:
         # Fonte 1: AwesomeAPI
         url = "https://economia.awesomeapi.com.br/last/EUR-BRL"
@@ -215,7 +215,7 @@ def obter_cotacao_euro_real_multifonte():
     except:
         pass
     
-    return 5.50, "R$", False, "Referência"
+    return 5.50, "R$", False, "Referencia"
 
 # =============================================================================
 # FUNÇÕES DE CÁLCULO CIENTÍFICO AVANÇADAS
@@ -224,20 +224,20 @@ def obter_cotacao_euro_real_multifonte():
 def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, periodo_anos=10, 
                                                          modo_incerteza='medio'):
     """
-    Calcula emissões evitadas com modelo avançado incluindo:
+    Calcula emissoes evitadas com modelo avancado incluindo:
     - Incerteza Monte Carlo
-    - Variação sazonal
-    - Eficiência da compostagem
+    - Variacao sazonal
+    - Eficiencia da compostagem
     """
     
-    # Massa de resíduos com variação
+    # Massa de residuos com variacao
     residuo_kg = capacidade_litros * DENSIDADE_PADRAO
     
     # =========================================================================
     # PARÂMETROS AVANÇADOS
     # =========================================================================
     
-    # Variação sazonal (temperatura mensal para São Paulo)
+    # Variacao sazonal (temperatura mensal para Sao Paulo)
     temperaturas_mensais = [22.5, 22.8, 22.1, 20.5, 18.2, 17.1, 
                            16.8, 18.1, 19.5, 20.8, 21.5, 22.2]  # °C
     
@@ -250,7 +250,7 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
         fator_ch4 = FATOR_INCERTEZA_CH4
         fator_n2o = FATOR_INCERTEZA_N2O
         eficiencia_compostagem = FATOR_EFICIENCIA_COMPOSTAGEM * 0.9
-    else:  # médio
+    else:  # medio
         fator_ch4 = 1.0
         fator_n2o = 1.0
         eficiencia_compostagem = FATOR_EFICIENCIA_COMPOSTAGEM
@@ -262,18 +262,18 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     k_ano_atual = st.session_state.get('k_ano', K_ANO_PADRAO)
     k_dia = k_ano_atual / 365.0
     
-    # Cálculo mensal considerando variação de temperatura
+    # Calculo mensal considerando variacao de temperatura
     emissao_ch4_mensal = []
     for temp in temperaturas_mensais:
         # DOCf varia com temperatura
         DOCf_temp = 0.0147 * temp + 0.28
         potencial_CH4_temp = 0.15 * DOCf_temp * 1.0 * 0.5 * (16/12) * 1 * 0.9
-        ch4_mensal = residuo_kg * potencial_CH4_temp / 12  # Distribuição anual
+        ch4_mensal = residuo_kg * potencial_CH4_temp / 12  # Distribuicao anual
         emissao_ch4_mensal.append(ch4_mensal)
     
     ch4_total_aterro = sum(emissao_ch4_mensal) * fator_ch4
     
-    # Distribuição temporal com kernel
+    # Distribuicao temporal com kernel
     dias_simulacao = periodo_anos * 365
     t = np.arange(1, dias_simulacao + 1, dtype=float)
     kernel_ch4 = np.exp(-k_dia * (t - 1)) - np.exp(-k_dia * t)
@@ -285,15 +285,15 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     # 2. N₂O DO ATERRO COM MODELO MELHORADO
     # =========================================================================
     
-    # Modelo de emissão de N₂O melhorado
+    # Modelo de emissao de N₂O melhorado
     massa_exposta_kg = min(residuo_kg, 50)
     h_exposta = 8
     
     f_aberto = (massa_exposta_kg / residuo_kg) * (h_exposta / 24)
     f_aberto = np.clip(f_aberto, 0.0, 1.0)
     
-    # Variação por tipo de resíduo
-    E_aberto = 1.91  # g N₂O-N/ton para resíduos alimentares
+    # Variacao por tipo de residuo
+    E_aberto = 1.91  # g N₂O-N/ton para residuos alimentares
     E_fechado = 2.15
     E_medio = f_aberto * E_aberto + (1 - f_aberto) * E_fechado
     
@@ -307,15 +307,15 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     # 3. COMPOSTAGEM COM EFICIÊNCIA VARIÁVEL
     # =========================================================================
     
-    # Parâmetros com variação
+    # Parametros com variacao
     TOC_YANG = 0.436 * eficiencia_compostagem
     TN_YANG = (14.2 / 1000) * eficiencia_compostagem
-    CH4_C_FRAC_YANG = 0.13 / 100 * (1 - eficiencia_compostagem/2)  # Menos CH4 com maior eficiência
-    N2O_N_FRAC_YANG = 0.92 / 100 * (1 - eficiencia_compostagem/2)  # Menos N2O com maior eficiência
+    CH4_C_FRAC_YANG = 0.13 / 100 * (1 - eficiencia_compostagem/2)  # Menos CH4 com maior eficiencia
+    N2O_N_FRAC_YANG = 0.92 / 100 * (1 - eficiencia_compostagem/2)  # Menos N2O com maior eficiencia
     
     fracao_ms = 1 - umidade
     
-    # Emissões da compostagem
+    # Emissoes da compostagem
     ch4_total_compostagem = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
     n2o_total_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
     
@@ -325,7 +325,7 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     
     GWP_CH4_20 = 79.7
     GWP_N2O_20 = 273
-    GWP_CH4_100 = 27.9  # Para comparação
+    GWP_CH4_100 = 27.9  # Para comparacao
     GWP_N2O_100 = 273   # Mesmo para 100 anos
     
     emissao_aterro_kgco2eq_20 = (
@@ -347,13 +347,13 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     # 5. CÁLCULO DE BENEFÍCIOS ADICIONAIS
     # =========================================================================
     
-    # Carbono sequestrado no húmus (estimativa)
+    # Carbono sequestrado no humus (estimativa)
     carbono_humus_kg = residuo_kg * 0.15 * 0.5  # 15% de carbono, 50% permanece
     
     # Fertilizante evitado (equivalente em NPK)
     npk_evitado_kg = residuo_kg * 0.02  # 2% do peso como fertilizante
     
-    # Água conservada (evitando produção de fertilizante)
+    # Agua conservada (evitando producao de fertilizante)
     agua_conservada_l = residuo_kg * 5  # 5L/kg de fertilizante evitado
     
     # =========================================================================
@@ -364,14 +364,14 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
     resultados_co2eq = []
     
     for _ in range(n_simulacoes):
-        # Variação aleatória nos parâmetros
+        # Variacao aleatoria nos parametros
         k_var = np.random.normal(k_ano_atual, k_ano_atual * 0.2)
         k_var = max(0.01, min(k_var, 0.5))
         
         densidade_var = np.random.normal(DENSIDADE_PADRAO, DENSIDADE_PADRAO * 0.1)
         densidade_var = max(0.4, min(densidade_var, 0.8))
         
-        # Cálculo com variação
+        # Calculo com variacao
         residuo_var = capacidade_litros * densidade_var
         ch4_aterro_var = ch4_total_aterro * np.random.normal(1, 0.2)
         n2o_aterro_var = n2o_total_aterro * np.random.normal(1, 0.3)
@@ -402,7 +402,7 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
             'carbono_humus_kg': carbono_humus_kg,
             'npk_evitado_kg': npk_evitado_kg,
             'agua_conservada_l': agua_conservada_l,
-            'co2_sequestrado_kg': carbono_humus_kg * 3.67  # Conversão C para CO₂
+            'co2_sequestrado_kg': carbono_humus_kg * 3.67  # Conversao C para CO₂
         },
         'incerteza': {
             'absoluta_95': incerteza_95,
@@ -425,12 +425,12 @@ def calcular_emissoes_evitadas_reator_detalhado_avancado(capacidade_litros, peri
 # =============================================================================
 
 def criar_grafico_evolucao_temporal(resultado):
-    """Cria gráfico de evolução temporal das emissões"""
+    """Cria grafico de evolucao temporal das emissoes"""
     
-    # Dados para o gráfico
+    # Dados para o grafico
     anos = list(range(1, st.session_state.periodo_credito + 1))
     
-    # Emissões de CH₄ ano a ano
+    # Emissoes de CH₄ ano a ano
     k_ano = st.session_state.k_ano
     ch4_anual = []
     acumulado = 0
@@ -441,22 +441,22 @@ def criar_grafico_evolucao_temporal(resultado):
         acumulado += ch4_ano
         ch4_anual.append(ch4_ano)
     
-    # Criar gráfico
+    # Criar grafico
     fig = make_subplots(
         rows=2, cols=2,
-        subplot_titles=('Emissões de CH₄ por Ano', 'Emissões Acumuladas',
-                       'Comparação de Cenários', 'Incerteza das Estimativas'),
+        subplot_titles=('Emissoes de CH₄ por Ano', 'Emissoes Acumuladas',
+                       'Comparacao de Cenarios', 'Incerteza das Estimativas'),
         specs=[[{'type': 'bar'}, {'type': 'line'}],
                [{'type': 'bar'}, {'type': 'box'}]]
     )
     
-    # Gráfico 1: Emissões anuais
+    # Grafico 1: Emissoes anuais
     fig.add_trace(
         go.Bar(x=anos, y=ch4_anual, name='CH₄ Ano a Ano', marker_color='#FF6B6B'),
         row=1, col=1
     )
     
-    # Gráfico 2: Acumulado
+    # Grafico 2: Acumulado
     acumulado_list = np.cumsum(ch4_anual)
     fig.add_trace(
         go.Scatter(x=anos, y=acumulado_list, name='CH₄ Acumulado',
@@ -464,8 +464,8 @@ def criar_grafico_evolucao_temporal(resultado):
         row=1, col=2
     )
     
-    # Gráfico 3: Comparação de cenários
-    cenarios = ['Otimista', 'Médio', 'Pessimista']
+    # Grafico 3: Comparacao de cenarios
+    cenarios = ['Otimista', 'Medio', 'Pessimista']
     valores = [
         resultado['emissoes_evitadas_tco2eq_20'] * 0.8,
         resultado['emissoes_evitadas_tco2eq_20'],
@@ -477,7 +477,7 @@ def criar_grafico_evolucao_temporal(resultado):
         row=2, col=1
     )
     
-    # Gráfico 4: Incerteza
+    # Grafico 4: Incerteza
     dados_incerteza = np.random.normal(
         resultado['incerteza']['media'] / 1000,
         resultado['incerteza']['absoluta_95'] / 3000,
@@ -485,7 +485,7 @@ def criar_grafico_evolucao_temporal(resultado):
     )
     
     fig.add_trace(
-        go.Box(y=dados_incerteza, name='Distribuição', marker_color='#9B59B6'),
+        go.Box(y=dados_incerteza, name='Distribuicao', marker_color='#9B59B6'),
         row=2, col=2
     )
     
@@ -493,18 +493,18 @@ def criar_grafico_evolucao_temporal(resultado):
         height=600,
         showlegend=False,
         template='plotly_white',
-        title_text="Análise Temporal e de Incerteza",
+        title_text="Analise Temporal e de Incerteza",
         title_font_size=16
     )
     
     return fig
 
 def criar_grafico_beneficios(resultado):
-    """Cria gráfico de benefícios adicionais"""
+    """Cria grafico de beneficios adicionais"""
     
     beneficios = resultado['beneficios']
-    labels = ['Carbono no Húmus (kg C)', 'Fertilizante Evitado (kg NPK)', 
-              'Água Conservada (m³)', 'CO₂ Sequesterado (kg)']
+    labels = ['Carbono no Humus (kg C)', 'Fertilizante Evitado (kg NPK)', 
+              'Agua Conservada (m³)', 'CO₂ Sequesterado (kg)']
     
     valores = [
         beneficios['carbono_humus_kg'],
@@ -524,7 +524,7 @@ def criar_grafico_beneficios(resultado):
     ])
     
     fig.update_layout(
-        title='Benefícios Adicionais da Compostagem',
+        title='Beneficios Adicionais da Compostagem',
         yaxis_title='Quantidade',
         template='plotly_white',
         height=400
@@ -533,12 +533,12 @@ def criar_grafico_beneficios(resultado):
     return fig
 
 def criar_grafico_comparacao_gwp(resultado):
-    """Cria gráfico comparando GWP 20 vs 100 anos"""
+    """Cria grafico comparando GWP 20 vs 100 anos"""
     
     fig = go.Figure(data=[
         go.Bar(
             name='GWP 20 anos',
-            x=['Emissões Evitadas'],
+            x=['Emissoes Evitadas'],
             y=[resultado['emissoes_evitadas_tco2eq_20']],
             marker_color='#E74C3C',
             error_y=dict(
@@ -549,7 +549,7 @@ def criar_grafico_comparacao_gwp(resultado):
         ),
         go.Bar(
             name='GWP 100 anos',
-            x=['Emissões Evitadas'],
+            x=['Emissoes Evitadas'],
             y=[resultado['emissoes_evitadas_tco2eq_100']],
             marker_color='#3498DB',
             error_y=dict(
@@ -561,7 +561,7 @@ def criar_grafico_comparacao_gwp(resultado):
     ])
     
     fig.update_layout(
-        title='Comparação: GWP 20 vs 100 Anos',
+        title='Comparacao: GWP 20 vs 100 Anos',
         yaxis_title='tCO₂eq',
         template='plotly_white',
         barmode='group',
@@ -575,7 +575,7 @@ def criar_grafico_comparacao_gwp(resultado):
 # =============================================================================
 
 def main():
-    # Inicialização
+    # Inicializacao
     if 'preco_carbono' not in st.session_state:
         preco_carbono, moeda, fonte, sucesso, _ = obter_cotacao_carbono_multifonte()
         st.session_state.preco_carbono = preco_carbono
@@ -587,20 +587,20 @@ def main():
         st.session_state.taxa_cambio = preco_euro
         st.session_state.moeda_real = moeda_real
     
-    # Sidebar avançada
+    # Sidebar avancada
     with st.sidebar:
-        st.markdown("### ⚙️ Controles Avançados")
+        st.markdown("### ⚙️ Controles Avancados")
         
         # Abas na sidebar
-        tab_params, tab_filtros, tab_config = st.tabs(["📊 Parâmetros", "🔍 Filtros", "⚙️ Config"])
+        tab_params, tab_filtros, tab_config = st.tabs(["📊 Parametros", "🔍 Filtros", "⚙️ Config"])
         
         with tab_params:
-            st.subheader("Parâmetros de Cálculo")
+            st.subheader("Parametros de Calculo")
             
             periodo_credito = st.slider(
-                "Período de crédito (anos)", 
+                "Periodo de credito (anos)", 
                 1, 50, 20, 1,
-                help="Período em anos para o qual as emissões são calculadas"
+                help="Periodo em anos para o qual as emissoes sao calculadas"
             )
             st.session_state.periodo_credito = periodo_credito
             
@@ -615,9 +615,9 @@ def main():
                 "Modo de incerteza",
                 ["medio", "otimista", "pessimista"],
                 format_func=lambda x: {
-                    "medio": "Médio (mais provável)",
-                    "otimista": "Otimista (melhor cenário)",
-                    "pessimista": "Pessimista (pior cenário)"
+                    "medio": "Medio (mais provavel)",
+                    "otimista": "Otimista (melhor cenario)",
+                    "pessimista": "Pessimista (pior cenario)"
                 }[x]
             )
             st.session_state.modo_incerteza = modo_incerteza
@@ -632,29 +632,29 @@ def main():
             st.session_state.gwp_selecionado = gwp_selecionado
             
         with tab_filtros:
-            st.subheader("Filtros de Visualização")
+            st.subheader("Filtros de Visualizacao")
             
-            # Exemplo simples - em produção, carregaria dados reais
+            # Exemplo simples - em producao, carregaria dados reais
             escolas = ["Todas as escolas", "Escola A", "Escola B", "Escola C"]
             escola_selecionada = st.selectbox("Selecionar escola", escolas)
             
             tipo_visualizacao = st.selectbox(
-                "Tipo de visualização",
+                "Tipo de visualizacao",
                 ["Resumo", "Detalhado", "Comparativo", "Temporal"]
             )
             
         with tab_config:
-            st.subheader("Configurações")
+            st.subheader("Configuracoes")
             
-            atualizacao_auto = st.checkbox("Atualização automática de cotações", value=True)
-            notificacoes = st.checkbox("Receber notificações", value=True)
+            atualizacao_auto = st.checkbox("Atualizacao automatica de cotacoes", value=True)
+            notificacoes = st.checkbox("Receber notificacoes", value=True)
             
             tema = st.selectbox(
                 "Tema do dashboard",
-                ["Claro", "Escuro", "Automático"]
+                ["Claro", "Escuro", "Automatico"]
             )
         
-        # Informações de cotações
+        # Informacoes de cotacoes
         st.markdown("---")
         st.markdown("### 💰 Mercado de Carbono")
         
@@ -662,7 +662,7 @@ def main():
         with col1:
             preco_formatado = formatar_br(st.session_state.preco_carbono, 2)
             st.metric(
-                "Preço do Carbono",
+                "Preco do Carbono",
                 f"€ {preco_formatado}",
                 help=f"Fonte: {st.session_state.fonte_cotacao}"
             )
@@ -677,15 +677,15 @@ def main():
         if st.button("🔄 Atualizar Agora", use_container_width=True):
             st.rerun()
     
-    # Área principal com abas
+    # Area principal com abas
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📈 Dashboard", "🧮 Cálculos", "🌍 Benefícios", "📊 Análise", "📋 Relatório"
+        "📈 Dashboard", "🧮 Calculos", "🌍 Beneficios", "📊 Analise", "📋 Relatorio"
     ])
     
     with tab1:
         st.header("📈 Dashboard de Desempenho")
         
-        # Métricas principais em cards
+        # Metricas principais em cards
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -695,40 +695,40 @@ def main():
         
         with col2:
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("Reatores em Operação", "42", "+5")
+            st.metric("Reatores em Operacao", "42", "+5")
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col3:
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("Resíduo Processado", "2,540 kg", "↑ 12%")
+            st.metric("Residuo Processado", "2,540 kg", "↑ 12%")
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col4:
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("Emissões Evitadas", "3.2 tCO₂eq", "↑ 8%")
+            st.metric("Emissoes Evitadas", "3.2 tCO₂eq", "↑ 8%")
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Gráfico principal
-        st.subheader("Evolução das Emissões Evitadas")
+        # Grafico principal
+        st.subheader("Evolucao das Emissoes Evitadas")
         
-        # Dados de exemplo para o gráfico
+        # Dados de exemplo para o grafico
         meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
                 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-        emissões_mensais = [120, 135, 148, 162, 175, 189, 
+        emissoes_mensais = [120, 135, 148, 162, 175, 189, 
                           205, 220, 235, 250, 265, 280]
         
         fig_evolucao = go.Figure()
         fig_evolucao.add_trace(go.Scatter(
-            x=meses, y=emissões_mensais,
+            x=meses, y=emissoes_mensais,
             mode='lines+markers',
-            name='Emissões Evitadas',
+            name='Emissoes Evitadas',
             line=dict(color='#2E8B57', width=3),
             fill='tozeroy',
             fillcolor='rgba(46, 139, 87, 0.2)'
         ))
         
         fig_evolucao.update_layout(
-            title='Acumulado Anual de Emissões Evitadas',
+            title='Acumulado Anual de Emissoes Evitadas',
             yaxis_title='kg CO₂eq',
             template='plotly_white',
             height=400
@@ -736,19 +736,19 @@ def main():
         
         st.plotly_chart(fig_evolucao, use_container_width=True)
         
-        # Métricas secundárias
+        # Metricas secundarias
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.markdown("### 🌱 Benefícios Ambientais")
+            st.markdown("### 🌱 Beneficios Ambientais")
             st.metric("Fertilizante Gerado", "380 kg")
-            st.metric("Água Economizada", "12,700 L")
+            st.metric("Agua Economizada", "12,700 L")
             st.metric("Solo Regenerado", "45 m²")
         
         with col2:
-            st.markdown("### 💰 Benefícios Econômicos")
+            st.markdown("### 💰 Beneficios Economicos")
             valor_creditos = 3.2 * st.session_state.preco_carbono * st.session_state.taxa_cambio
-            st.metric("Valor dos Créditos", formatar_moeda_br(valor_creditos))
+            st.metric("Valor dos Creditos", formatar_moeda_br(valor_creditos))
             st.metric("Fertilizante Economizado", formatar_moeda_br(760))
             st.metric("Custo Evitado (aterro)", formatar_moeda_br(450))
         
@@ -756,12 +756,12 @@ def main():
             st.markdown("### 👥 Impacto Social")
             st.metric("Alunos Envolvidos", "1,250")
             st.metric("Professores Treinados", "45")
-            st.metric("Famílias Impactadas", "850")
+            st.metric("Familias Impactadas", "850")
     
     with tab2:
-        st.header("🧮 Cálculos Científicos Detalhados")
+        st.header("🧮 Calculos Cientificos Detalhados")
         
-        # Simulação para um reator exemplo
+        # Simulacao para um reator exemplo
         capacidade_exemplo = 100  # Litros
         resultado = calcular_emissoes_evitadas_reator_detalhado_avancado(
             capacidade_exemplo, 
@@ -778,23 +778,23 @@ def main():
         with col1:
             st.markdown("### 📐 Dados do Reator")
             st.metric("Capacidade", f"{capacidade_exemplo} L")
-            st.metric("Resíduo Processado", f"{formatar_br(resultado['residuo_kg'], 1)} kg")
+            st.metric("Residuo Processado", f"{formatar_br(resultado['residuo_kg'], 1)} kg")
             st.metric("Densidade", f"{DENSIDADE_PADRAO} kg/L")
-            st.metric("Período de Cálculo", f"{st.session_state.periodo_credito} anos")
+            st.metric("Periodo de Calculo", f"{st.session_state.periodo_credito} anos")
         
         with col2:
             st.markdown("### 📊 Resultados")
             st.metric(
-                f"Emissões Evitadas (GWP {gwp_utilizado} anos)",
+                f"Emissoes Evitadas (GWP {gwp_utilizado} anos)",
                 formatar_tco2eq(resultado[emissao_chave]),
                 help=f"Incerteza: ±{formatar_porcentagem(resultado['incerteza']['relativa'])}"
             )
             
             valor_creditos = resultado[emissao_chave] * st.session_state.preco_carbono * st.session_state.taxa_cambio
             st.metric(
-                "Valor dos Créditos",
+                "Valor dos Creditos",
                 formatar_moeda_br(valor_creditos),
-                help="Baseado na cotação atual"
+                help="Baseado na cotacao atual"
             )
             
             st.metric(
@@ -802,56 +802,56 @@ def main():
                 f"±{formatar_br(resultado['incerteza']['absoluta_95']/1000, 3)} tCO₂eq"
             )
         
-        # Gráficos de análise
-        st.subheader("📈 Análise Temporal")
+        # Graficos de analise
+        st.subheader("📈 Analise Temporal")
         fig_temporal = criar_grafico_evolucao_temporal(resultado)
         st.plotly_chart(fig_temporal, use_container_width=True)
         
-        # Comparação GWP
-        st.subheader("🔍 Comparação de Horizontes Temporais")
+        # Comparacao GWP
+        st.subheader("🔍 Comparacao de Horizontes Temporais")
         fig_gwp = criar_grafico_comparacao_gwp(resultado)
         st.plotly_chart(fig_gwp, use_container_width=True)
         
-        # Análise de sensibilidade
-        st.subheader("🎯 Análise de Sensibilidade")
+        # Analise de sensibilidade
+        st.subheader("🎯 Analise de Sensibilidade")
         
         sensibilidade_data = {
-            'Parâmetro': ['Taxa k', 'Densidade', 'Período', 'Eficiência', 'GWP CH₄'],
-            'Variação': ['±20%', '±10%', '±25%', '±15%', '±5%'],
-            'Impacto nas Emissões': ['Alto', 'Médio', 'Alto', 'Médio', 'Baixo']
+            'Parametro': ['Taxa k', 'Densidade', 'Periodo', 'Eficiencia', 'GWP CH₄'],
+            'Variacao': ['±20%', '±10%', '±25%', '±15%', '±5%'],
+            'Impacto nas Emissoes': ['Alto', 'Medio', 'Alto', 'Medio', 'Baixo']
         }
         
         df_sensibilidade = pd.DataFrame(sensibilidade_data)
         st.dataframe(df_sensibilidade, use_container_width=True)
     
     with tab3:
-        st.header("🌍 Benefícios Ambientais e Sociais")
+        st.header("🌍 Beneficios Ambientais e Sociais")
         
-        # Gráfico de benefícios
+        # Grafico de beneficios
         fig_beneficios = criar_grafico_beneficios(resultado)
         st.plotly_chart(fig_beneficios, use_container_width=True)
         
-        # Cards de benefícios detalhados
+        # Cards de beneficios detalhados
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown('<div class="success-box">', unsafe_allow_html=True)
             st.markdown("### 🌱 Qualidade do Solo")
             st.markdown("""
-            - **Matéria orgânica:** +15%
-            - **Retenção de água:** +25%
+            - **Materia organica:** +15%
+            - **Retencao de agua:** +25%
             - **Biodiversidade:** +300%
-            - **Erosão reduzida:** -40%
+            - **Erosao reduzida:** -40%
             """)
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
             st.markdown('<div class="info-box">', unsafe_allow_html=True)
-            st.markdown("### 💧 Conservação de Água")
+            st.markdown("### 💧 Conservacao de Agua")
             st.markdown("""
-            - **Água economizada:** 12.700 L
-            - **Recursos hídricos:** Protegidos
-            - **Qualidade da água:** Melhorada
+            - **Agua economizada:** 12.700 L
+            - **Recursos hidricos:** Protegidos
+            - **Qualidade da agua:** Melhorada
             - **Drenagem urbana:** Reduzida
             """)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -860,10 +860,10 @@ def main():
             st.markdown('<div class="warning-box">', unsafe_allow_html=True)
             st.markdown("### 👥 Impacto Social")
             st.markdown("""
-            - **Educação ambiental:** 1.250 alunos
+            - **Educacao ambiental:** 1.250 alunos
             - **Empregos verdes:** 5 criados
             - **Comunidade:** Engajada
-            - **Saúde pública:** Melhorada
+            - **Saude publica:** Melhorada
             """)
             st.markdown('</div>', unsafe_allow_html=True)
         
@@ -871,25 +871,25 @@ def main():
         st.subheader("🔄 Ciclo de Nutrientes Fechado")
         
         nutrientes_data = {
-            'Nutriente': ['Nitrogênio (N)', 'Fósforo (P)', 'Potássio (K)', 'Carbono (C)'],
-            'Resíduo Original (kg)': [4.2, 0.8, 3.1, 25.6],
-            'Recuperado no Húmus (kg)': [3.8, 0.7, 2.9, 12.8],
-            'Taxa de Recuperação': ['90%', '88%', '94%', '50%']
+            'Nutriente': ['Nitrogenio (N)', 'Fosforo (P)', 'Potassio (K)', 'Carbono (C)'],
+            'Residuo Original (kg)': [4.2, 0.8, 3.1, 25.6],
+            'Recuperado no Humus (kg)': [3.8, 0.7, 2.9, 12.8],
+            'Taxa de Recuperacao': ['90%', '88%', '94%', '50%']
         }
         
         df_nutrientes = pd.DataFrame(nutrientes_data)
         st.dataframe(df_nutrientes, use_container_width=True)
     
     with tab4:
-        st.header("📊 Análise Comparativa e Projeções")
+        st.header("📊 Analise Comparativa e Projecoes")
         
-        # Comparação de cenários
-        st.subheader("📈 Comparação de Cenários")
+        # Comparacao de cenarios
+        st.subheader("📈 Comparacao de Cenarios")
         
         cenarios = pd.DataFrame({
-            'Cenário': ['Atual', 'Expansão 50%', 'Expansão 100%', 'Otimizado'],
+            'Cenario': ['Atual', 'Expansao 50%', 'Expansao 100%', 'Otimizado'],
             'Reatores': [42, 63, 84, 50],
-            'Emissões Evitadas (tCO₂eq/ano)': [3.2, 4.8, 6.4, 4.0],
+            'Emissoes Evitadas (tCO₂eq/ano)': [3.2, 4.8, 6.4, 4.0],
             'Valor Anual (R$)': [
                 3.2 * st.session_state.preco_carbono * st.session_state.taxa_cambio,
                 4.8 * st.session_state.preco_carbono * st.session_state.taxa_cambio,
@@ -901,22 +901,22 @@ def main():
         
         st.dataframe(cenarios, use_container_width=True)
         
-        # Projeção temporal
-        st.subheader("🔮 Projeção 5 Anos")
+        # Projecao temporal
+        st.subheader("🔮 Projecao 5 Anos")
         
         anos_projecao = [2024, 2025, 2026, 2027, 2028]
-        emissões_projecao = [3.2, 3.8, 4.5, 5.3, 6.2]
+        emissoes_projecao = [3.2, 3.8, 4.5, 5.3, 6.2]
         valor_projecao = [e * st.session_state.preco_carbono * st.session_state.taxa_cambio 
-                         for e in emissões_projecao]
+                         for e in emissoes_projecao]
         
         fig_projecao = make_subplots(
             rows=1, cols=2,
-            subplot_titles=('Emissões Evitadas', 'Valor dos Créditos'),
+            subplot_titles=('Emissoes Evitadas', 'Valor dos Creditos'),
             specs=[[{'type': 'bar'}, {'type': 'bar'}]]
         )
         
         fig_projecao.add_trace(
-            go.Bar(x=anos_projecao, y=emissões_projecao, name='tCO₂eq',
+            go.Bar(x=anos_projecao, y=emissoes_projecao, name='tCO₂eq',
                   marker_color='#2E8B57'),
             row=1, col=1
         )
@@ -930,47 +930,48 @@ def main():
         fig_projecao.update_layout(height=400, showlegend=False)
         st.plotly_chart(fig_projecao, use_container_width=True)
         
-        # Análise de viabilidade
-        st.subheader("📋 Análise de Viabilidade")
+        # Analise de viabilidade
+        st.subheader("📋 Analise de Viabilidade")
         
         viabilidade_data = {
             'Indicador': ['VPL (5 anos)', 'TIR', 'Payback', 'B/C Ratio', 'ROI'],
             'Valor': [formatar_moeda_br(15200), '24%', '3.2 anos', '2.8', '18%'],
-            'Avaliação': ['⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐']
+            'Avaliacao': ['⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐ ⭐', '⭐ ⭐ ⭐ ⭐']
         }
         
         df_viabilidade = pd.DataFrame(viabilidade_data)
         st.dataframe(df_viabilidade, use_container_width=True)
     
     with tab5:
-        st.header("📋 Relatório Completo")
+        st.header("📋 Relatorio Completo")
         
-        # Gerar relatório
+        # Gerar relatorio
         col1, col2 = st.columns([3, 1])
         
         with col1:
             st.markdown("### 📄 Resumo Executivo")
             st.markdown("""
-            Este relatório apresenta os resultados do programa de compostagem com minhocas 
-            nas escolas de Ribeirão Preto. O programa demonstrou significativos benefícios 
-            ambientais, econômicos e sociais.
+            Este relatorio apresenta os resultados do programa de compostagem com minhocas 
+            nas escolas de Ribeirao Preto. O programa demonstrou significativos beneficios 
+            ambientais, economicos e sociais.
             
-            **Principais Conclusões:**
-            1. **Eficiência comprovada:** Redução de 85% nas emissões de GEE
-            2. **Viabilidade econômica:** ROI de 18% ao ano
+            **Principais Conclusoes:**
+            1. **Eficiencia comprovada:** Reducao de 85% nas emissoes de GEE
+            2. **Viabilidade economica:** ROI de 18% ao ano
             3. **Impacto social positivo:** 1.250 alunos envolvidos
             4. **Sustentabilidade:** Ciclo fechado de nutrientes
             
-            **Recomendações:**
+            **Recomendacoes:**
             - Expandir para 50 novas escolas
-            - Implementar sistema de monitoramento contínuo
-            - Criar mercado local de créditos de carbono
+            - Implementar sistema de monitoramento continuo
+            - Criar mercado local de creditos de carbono
             """)
         
         with col2:
+            # Corrigido: usando string ASCII simples
             st.download_button(
-                label="📥 Baixar Relatório (PDF)",
-                data=BytesIO(b"Relatório gerado - Conteúdo em PDF"),
+                label="📥 Baixar Relatorio (PDF)",
+                data=BytesIO(b"Relatorio gerado - Conteudo em PDF"),
                 file_name="relatorio_compostagem.pdf",
                 mime="application/pdf",
                 use_container_width=True
@@ -984,42 +985,42 @@ def main():
                 use_container_width=True
             )
         
-        # Metadados do relatório
-        st.markdown("### 📊 Metadados e Métricas")
+        # Metadados do relatorio
+        st.markdown("### 📊 Metadados e Metricas")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Data do Relatório", datetime.now().strftime("%d/%m/%Y"))
-            st.metric("Período Analisado", "12 meses")
+            st.metric("Data do Relatorio", datetime.now().strftime("%d/%m/%Y"))
+            st.metric("Periodo Analisado", "12 meses")
             st.metric("Escolas Analisadas", "15")
         
         with col2:
-            st.metric("Confiança dos Dados", "92%")
+            st.metric("Confianca dos Dados", "92%")
             st.metric("Margem de Erro", "±8%")
-            st.metric("Atualização", "Diária")
+            st.metric("Atualizacao", "Diaria")
         
         with col3:
             st.metric("Metodologia", "IPCC 2006 + Ajustes")
             st.metric("GWP Utilizado", f"{gwp_utilizado} anos")
-            st.metric("Verificação", "Triangulação")
+            st.metric("Verificacao", "Triangulacao")
         
         # Assinatura
         st.markdown("---")
         st.markdown("""
-        *Relatório gerado automaticamente pelo Sistema de Compostagem com Minhocas*
+        *Relatorio gerado automaticamente pelo Sistema de Compostagem com Minhocas*
         
         **Contato:** compostagem@ribeiraopreto.sp.gov.br  
         **Telefone:** (16) 3977-1234  
-        **Última atualização:** """ + datetime.now().strftime("%d/%m/%Y %H:%M"))
+        **Ultima atualizacao:** """ + datetime.now().strftime("%d/%m/%Y %H:%M"))
     
-    # Rodapé avançado
+    # Rodape avancado
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("**🔬 Base Científica**")
+        st.markdown("**🔬 Base Cientifica**")
         st.markdown("""
         - IPCC Guidelines 2006
         - Yang et al. (2017)
@@ -1030,8 +1031,8 @@ def main():
     with col2:
         st.markdown("**🤝 Parcerias**")
         st.markdown("""
-        - Prefeitura de Ribeirão Preto
-        - Secretaria de Educação
+        - Prefeitura de Ribeirao Preto
+        - Secretaria de Educacao
         - Secretaria do Meio Ambiente
         - Universidades Locais
         """)
@@ -1041,13 +1042,13 @@ def main():
         st.markdown("""
         - Email: suporte@compostagem.rp.gov.br
         - Telefone: (16) 3977-5678
-        - Horário: 8h-18h (seg-sex)
-        - Emergência: 24h
+        - Horario: 8h-18h (seg-sex)
+        - Emergencia: 24h
         """)
     
     st.markdown("""
     <div style='text-align: center; color: #666; margin-top: 20px;'>
-    ♻️ Sistema de Compostagem com Minhocas • Ribeirão Preto/SP • 
+    ♻️ Sistema de Compostagem com Minhocas • Ribeirao Preto/SP • 
     Dados atualizados em tempo real • v2.0.0
     </div>
     """, unsafe_allow_html=True)
