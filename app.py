@@ -243,7 +243,7 @@ def inicializar_session_state():
         st.session_state.cotacao_carregada = False
 
 # =============================================================================
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - CORRIGIDA E MELHORADA
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO DOS DADOS REAIS - AJUSTADA
 # =============================================================================
 
 @st.cache_data
@@ -255,35 +255,31 @@ def carregar_dados_excel(url):
         
         # Verificar abas disponíveis
         excel_file = pd.ExcelFile(url)
-        st.info(f"📋 Abas disponíveis no Excel: {excel_file.sheet_names}")
         
         # Ler as abas corretas
         df_escolas = pd.read_excel(url, sheet_name='escolas')
         df_reatores = pd.read_excel(url, sheet_name='reatores')
         df_gastos = pd.read_excel(url, sheet_name='gastos')
         
-        # CORREÇÃO: Remover linhas completamente vazias
+        # Remover linhas completamente vazias
         df_reatores = df_reatores.dropna(how='all')
         df_escolas = df_escolas.dropna(how='all')
         df_gastos = df_gastos.dropna(how='all')
         
-        # CORREÇÃO: Remover linhas onde id_reator está vazio ou é NaN
+        # Remover linhas onde id_reator está vazio ou é NaN
         if 'id_reator' in df_reatores.columns:
             df_reatores = df_reatores.dropna(subset=['id_reator'])
             df_reatores = df_reatores[df_reatores['id_reator'].astype(str).str.strip() != '']
         
         loading_placeholder.empty()
-        st.success(f"✅ Dados carregados: {len(df_escolas)} escolas, {len(df_reatores)} reatores, {len(df_gastos)} gastos")
         
         # Converter colunas de data para formato brasileiro DD/MM/YYYY
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
-                # Converter string no formato DD/MM/YYYY para datetime
                 try:
                     df_escolas[col] = pd.to_datetime(df_escolas[col], dayfirst=True, errors='coerce')
                 except:
-                    # Tentar outro formato se o primeiro falhar
                     df_escolas[col] = pd.to_datetime(df_escolas[col], errors='coerce')
         
         colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
@@ -300,108 +296,41 @@ def carregar_dados_excel(url):
             except:
                 df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], errors='coerce')
         
-        # Converter colunas numéricas
+        # Converter colunas numéricas das escolas
         if 'capacidade_total_sistema_litros' in df_escolas.columns:
             df_escolas['capacidade_total_sistema_litros'] = pd.to_numeric(df_escolas['capacidade_total_sistema_litros'], errors='coerce')
         
-        # IMPORTANTE: No arquivo atual não existe a coluna 'capacidade_litros', 
-        # então vamos calcular com base nas dimensões
+        # =============================================================================
+        # MUDANÇA CRÍTICA: CALCULAR capacidade_litros APENAS A PARTIR DAS DIMENSÕES
+        # =============================================================================
+        
+        # Verificar se as colunas de dimensões existem
         dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
         
-        # Verificar se todas as dimensões existem
         if all(col in df_reatores.columns for col in dimensoes_cols):
-            # Calcular volume em litros: (altura * largura * comprimento) / 1000
-            # Converter todas as dimensões para numéricas
+            # Converter dimensões para numérico
             for col in dimensoes_cols:
                 df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
             
-            # Calcular volume calculado em litros
-            df_reatores['volume_calculado_litros'] = (df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm']) / 1000
-            df_reatores['volume_calculado_litros'] = df_reatores['volume_calculado_litros'].round(2)
+            # Calcular capacidade em litros: volume em cm³ / 1000 = litros
+            df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * 
+                                               df_reatores['largura_cm'] * 
+                                               df_reatores['comprimento_cm']) / 1000
             
-            # Criar coluna capacidade_litros com base no volume calculado
-            df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros']
+            # Arredondar para 2 casas decimais
+            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].round(2)
             
-            st.info("✅ Capacidade dos reatores calculada automaticamente com base nas dimensões (altura × largura × comprimento / 1000)")
+            # Se alguma dimensão estiver faltando, o cálculo resulta em NaN - preencher com valor padrão
+            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
+            
+            # Calcular massa de resíduos em kg usando densidade fixa
+            df_reatores['residuo_kg_estimado'] = df_reatores['capacidade_litros'] * DENSIDADE_PADRAO
+            df_reatores['residuo_kg_estimado'] = df_reatores['residuo_kg_estimado'].round(1)
         else:
-            # Se não tiver dimensões, usar valor padrão de 100L
+            # Se não tiver as dimensões, usar valor padrão de 100L
+            st.warning("⚠️ Colunas de dimensões não encontradas. Usando capacidade padrão de 100L para todos os reatores.")
             df_reatores['capacidade_litros'] = 100
-            st.warning("⚠️ Dimensões dos reatores não encontradas. Usando capacidade padrão de 100L.")
-        
-        # =============================================================================
-        # NOVO: CALCULAR COLUNAS FALTANTES NAS ESCOLAS COM BASE NOS REATORES
-        # =============================================================================
-        
-        # 1. Calcular capacidade_total_sistema_litros: soma da capacidade de todos os reatores da escola
-        if 'id_escola' in df_reatores.columns and 'capacidade_litros' in df_reatores.columns:
-            capacidade_por_escola = df_reatores.groupby('id_escola')['capacidade_litros'].sum().reset_index()
-            capacidade_por_escola = capacidade_por_escola.rename(columns={'capacidade_litros': 'capacidade_total_sistema_litros_calculado'})
-            
-            # Mesclar com df_escolas
-            df_escolas = df_escolas.merge(capacidade_por_escola, on='id_escola', how='left')
-            
-            # Se a coluna original existir e estiver vazia, usar o valor calculado
-            if 'capacidade_total_sistema_litros' in df_escolas.columns:
-                mask = df_escolas['capacidade_total_sistema_litros'].isna()
-                df_escolas.loc[mask, 'capacidade_total_sistema_litros'] = df_escolas.loc[mask, 'capacidade_total_sistema_litros_calculado']
-            else:
-                # Se não existir, criar a coluna com os valores calculados
-                df_escolas['capacidade_total_sistema_litros'] = df_escolas['capacidade_total_sistema_litros_calculado']
-            
-            # Remover coluna auxiliar
-            df_escolas = df_escolas.drop('capacidade_total_sistema_litros_calculado', axis=1)
-        
-        # 2. Calcular num_caixas_processamento: contar reatores com tipo_caixa = "Processamento"
-        if 'id_escola' in df_reatores.columns and 'tipo_caixa' in df_reatores.columns:
-            # Filtrar reatores do tipo Processamento
-            reatores_processamento = df_reatores[df_reatores['tipo_caixa'].str.contains('Processamento', case=False, na=False)]
-            
-            if not reatores_processamento.empty:
-                processamento_por_escola = reatores_processamento.groupby('id_escola').size().reset_index(name='num_caixas_processamento_calculado')
-                
-                # Mesclar com df_escolas
-                df_escolas = df_escolas.merge(processamento_por_escola, on='id_escola', how='left')
-                
-                # Se a coluna original existir e estiver vazia, usar o valor calculado
-                if 'num_caixas_processamento' in df_escolas.columns:
-                    mask = df_escolas['num_caixas_processamento'].isna()
-                    df_escolas.loc[mask, 'num_caixas_processamento'] = df_escolas.loc[mask, 'num_caixas_processamento_calculado'].fillna(0)
-                else:
-                    # Se não existir, criar a coluna com os valores calculados
-                    df_escolas['num_caixas_processamento'] = df_escolas['num_caixas_processamento_calculado'].fillna(0)
-                
-                # Remover coluna auxiliar
-                df_escolas = df_escolas.drop('num_caixas_processamento_calculado', axis=1)
-        
-        # 3. Calcular num_caixas_líquido: contar reatores com tipo_caixa = "Líquido"
-        if 'id_escola' in df_reatores.columns and 'tipo_caixa' in df_reatores.columns:
-            # Filtrar reatores do tipo Líquido
-            reatores_liquido = df_reatores[df_reatores['tipo_caixa'].str.contains('Líquido', case=False, na=False)]
-            
-            if not reatores_liquido.empty:
-                liquido_por_escola = reatores_liquido.groupby('id_escola').size().reset_index(name='num_caixas_líquido_calculado')
-                
-                # Mesclar com df_escolas
-                df_escolas = df_escolas.merge(liquido_por_escola, on='id_escola', how='left')
-                
-                # Se a coluna original existir e estiver vazia, usar o valor calculado
-                if 'num_caixas_líquido' in df_escolas.columns:
-                    mask = df_escolas['num_caixas_líquido'].isna()
-                    df_escolas.loc[mask, 'num_caixas_líquido'] = df_escolas.loc[mask, 'num_caixas_líquido_calculado'].fillna(0)
-                else:
-                    # Se não existir, criar a coluna com os valores calculados
-                    df_escolas['num_caixas_líquido'] = df_escolas['num_caixas_líquido_calculado'].fillna(0)
-                
-                # Remover coluna auxiliar
-                df_escolas = df_escolas.drop('num_caixas_líquido_calculado', axis=1)
-        
-        # Preencher valores NaN com 0 para as colunas calculadas
-        colunas_calculadas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 'num_caixas_líquido']
-        for col in colunas_calculadas:
-            if col in df_escolas.columns:
-                df_escolas[col] = df_escolas[col].fillna(0)
-        
-        st.info("✅ Colunas das escolas calculadas automaticamente com base nos reatores")
+            df_reatores['residuo_kg_estimado'] = 100 * DENSIDADE_PADRAO
         
         return df_escolas, df_reatores, df_gastos
         
@@ -511,19 +440,6 @@ def calcular_emissoes_evitadas_reator(capacidade_litros):
 
 def processar_reatores_cheios(df_reatores, df_escolas):
     """Processa os reatores cheios e calcula emissões evitadas"""
-    # Verificar se a coluna capacidade_litros existe
-    if 'capacidade_litros' not in df_reatores.columns:
-        # Calcular capacidade com base nas dimensões
-        if all(col in df_reatores.columns for col in ['altura_cm', 'largura_cm', 'comprimento_cm']):
-            # Converter para numéricos
-            for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
-                df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
-            
-            df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm']) / 1000
-        else:
-            # Se não tiver dimensões, usar valor padrão
-            df_reatores['capacidade_litros'] = 100
-    
     # Filtrar reatores que já encheram
     reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
     
@@ -537,7 +453,8 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     detalhes_calculo = []
     
     for _, reator in reatores_cheios.iterrows():
-        capacidade = reator['capacidade_litros']
+        # Usar a capacidade calculada automaticamente
+        capacidade = reator['capacidade_litros'] if pd.notna(reator['capacidade_litros']) else 100
         resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade)
         residuo_kg = resultado_detalhado['residuo_kg']
         emissoes_evitadas = resultado_detalhado['emissoes_evitadas_tco2eq']
@@ -549,7 +466,10 @@ def processar_reatores_cheios(df_reatores, df_escolas):
             'capacidade_litros': capacidade,
             'residuo_kg': residuo_kg,
             'emissoes_evitadas_tco2eq': emissoes_evitadas,
-            'calculo_detalhado': resultado_detalhado
+            'calculo_detalhado': resultado_detalhado,
+            'altura_cm': reator.get('altura_cm', 'N/A'),
+            'largura_cm': reator.get('largura_cm', 'N/A'),
+            'comprimento_cm': reator.get('comprimento_cm', 'N/A')
         })
         
         resultados.append({
@@ -558,7 +478,10 @@ def processar_reatores_cheios(df_reatores, df_escolas):
             'data_encheu': reator['data_encheu'],
             'capacidade_litros': capacidade,
             'residuo_kg': residuo_kg,
-            'emissoes_evitadas_tco2eq': emissoes_evitadas
+            'emissoes_evitadas_tco2eq': emissoes_evitadas,
+            'altura_cm': reator.get('altura_cm', 'N/A'),
+            'largura_cm': reator.get('largura_cm', 'N/A'),
+            'comprimento_cm': reator.get('comprimento_cm', 'N/A')
         })
         
         total_residuo += residuo_kg
@@ -616,7 +539,7 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
         return escolas_ativas
 
 # =============================================================================
-# ANÁLISE DE GASTOS - CORRIGIDA
+# ANÁLISE DE GASTOS
 # =============================================================================
 
 def analisar_gastos(df_gastos):
@@ -637,7 +560,7 @@ def analisar_gastos(df_gastos):
     return df_gastos, 0
 
 # =============================================================================
-# INTERFACE PRINCIPAL - COM REORDENAÇÃO
+# INTERFACE PRINCIPAL
 # =============================================================================
 
 # Inicializar session state
@@ -672,21 +595,6 @@ else:
     reatores_filtrados = df_reatores
     escolas_filtradas = df_escolas
 
-# Verificar se reatores_filtrados tem a coluna capacidade_litros
-if 'capacidade_litros' not in reatores_filtrados.columns:
-    # Calcular capacidade com base nas dimensões
-    if all(col in reatores_filtrados.columns for col in ['altura_cm', 'largura_cm', 'comprimento_cm']):
-        # Converter para numéricos
-        for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
-            reatores_filtrados[col] = pd.to_numeric(reatores_filtrados[col], errors='coerce')
-        
-        reatores_filtrados['capacidade_litros'] = (reatores_filtrados['altura_cm'] * 
-                                                  reatores_filtrados['largura_cm'] * 
-                                                  reatores_filtrados['comprimento_cm']) / 1000
-    else:
-        # Se não tiver dimensões, usar valor padrão
-        reatores_filtrados['capacidade_litros'] = 100
-
 reatores_processados, total_residuo, total_emissoes, detalhes_calculo = processar_reatores_cheios(
     reatores_filtrados, escolas_filtradas
 )
@@ -702,19 +610,16 @@ valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", tax
 df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 
 # =============================================================================
-# EXIBIÇÃO DOS DADOS REAIS - COM CRÉDITOS EM PRIMEIRO LUGAR
+# EXIBIÇÃO DOS DADOS REAIS
 # =============================================================================
 
-st.header("📊 Dashboard de Compostagem com Minhocas - Dados Reais")
-
-# Informação sobre densidade fixa
+# Informação sobre densidade fixa e cálculo automático
 st.info(f"""
-**⚙️ Parâmetros de Cálculo Fixos:**
+**⚙️ Parâmetros de Cálculo Automáticos:**
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L (padrão para resíduos de vegetais, frutas e borra de café)
+- **Cálculo de capacidade:** O sistema calcula automaticamente a capacidade em litros a partir das dimensões do reator (altura × largura × comprimento ÷ 1000)
 - **Base científica:** Valores médios da literatura para resíduos orgânicos de cozinha escolar
 - **Tipo de resíduo:** Apenas pré-preparo (sem restos de pratos com carne ou laticínios)
-- **Cálculo automático:** As colunas das escolas são calculadas automaticamente com base nos dados dos reatores
-- **Capacidade dos reatores:** Calculada automaticamente: (altura × largura × comprimento) / 1000
 """)
 
 # Métricas gerais
@@ -733,12 +638,11 @@ with col3:
     st.metric("Reatores Cheios", formatar_br(reatores_cheios, 0))
 
 with col4:
-    # MODIFICAÇÃO: Considera reator ativo se tiver qualquer texto na coluna status_reator
     reatores_ativos = len(df_reatores[df_reatores['status_reator'].notna()])
     st.metric("Reatores Ativos", formatar_br(reatores_ativos, 0))
 
 # =============================================================================
-# RESULTADOS FINANCEIROS REAIS - AGORA EM PRIMEIRO LUGAR
+# RESULTADOS FINANCEIROS REAIS
 # =============================================================================
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
@@ -776,7 +680,7 @@ else:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
 # =============================================================================
-# ANÁLISE DE GASTOS - CORRIGIDA
+# ANÁLISE DE GASTOS
 # =============================================================================
 
 st.header("💰 Análise de Gastos")
@@ -806,21 +710,16 @@ if not df_gastos.empty:
     
     # Formatar data e garantir ordenação correta
     if 'data_compra' in df_gastos_display.columns:
-        # Garantir que a coluna data_compra seja datetime
         df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce')
-        # Ordenar do mais antigo para o mais atual (crescente)
         df_gastos_display = df_gastos_display.sort_values('data_compra', ascending=True)
-        # Formatar data para exibição
         df_gastos_display['data_compra'] = df_gastos_display['data_compra'].dt.strftime('%d/%m/%Y')
     
     # Formatar valor para o padrão brasileiro
     if 'valor' in df_gastos_display.columns:
-        # Extrair valor numérico e formatar
         df_gastos_display['valor_formatado'] = df_gastos_display['valor'].astype(str).apply(
             lambda x: formatar_moeda_br(float(x.replace('R$', '').replace(',', '.').strip()), "R$", 2) 
             if pd.notna(x) and x != '' else formatar_moeda_br(0, "R$", 2)
         )
-        # Substituir a coluna original pela formatada
         df_gastos_display['valor'] = df_gastos_display['valor_formatado']
         df_gastos_display = df_gastos_display.drop('valor_formatado', axis=1)
     
@@ -829,7 +728,7 @@ else:
     st.info("ℹ️ Nenhum gasto registrado no sistema.")
 
 # =============================================================================
-# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS - CORRIGIDA
+# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
 # =============================================================================
 
 st.header("🏫 Análise de Escolas Ativas com Reatores Ativos")
@@ -852,7 +751,7 @@ with col3:
     total_reatores_ativos_analise = escolas_com_reatores_ativos['reatores_ativos'].sum()
     st.metric("Total de Reatores Ativos (Análise)", formatar_br(total_reatores_ativos_analise, 0))
 
-# Tabela detalhada - SEM CORES E COM DATAS NO FORMATO DO EXCEL
+# Tabela detalhada
 st.subheader("📋 Detalhamento por Escola")
 
 # Selecionar colunas para exibição
@@ -862,16 +761,10 @@ if 'status' in escolas_com_reatores_ativos.columns:
 if 'data_implantacao' in escolas_com_reatores_ativos.columns:
     colunas_display.append('data_implantacao')
 
-# Adicionar as colunas calculadas automaticamente
-colunas_calculadas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 'num_caixas_líquido']
-for col in colunas_calculadas:
-    if col in escolas_com_reatores_ativos.columns:
-        colunas_display.append(col)
-
 # Criar DataFrame para exibição
 df_display = escolas_com_reatores_ativos[colunas_display].copy()
 
-# Formatar coluna data_implantacao no formato DD/MM/YYYY (igual Excel)
+# Formatar coluna data_implantacao no formato DD/MM/YYYY
 if 'data_implantacao' in df_display.columns:
     df_display['data_implantacao'] = pd.to_datetime(df_display['data_implantacao'], errors='coerce').dt.strftime('%d/%m/%Y')
 
@@ -879,16 +772,8 @@ if 'data_implantacao' in df_display.columns:
 if 'reatores_ativos' in df_display.columns:
     df_display['reatores_ativos'] = df_display['reatores_ativos'].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "0")
 
-# Formatar colunas calculadas
-for col in colunas_calculadas:
-    if col in df_display.columns:
-        if 'litros' in col:
-            df_display[col] = df_display[col].apply(lambda x: f"{formatar_br(x, 0)} L" if pd.notna(x) else "0 L")
-        else:
-            df_display[col] = df_display[col].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "0")
-
 # Ordenar por quantidade de reatores ativos (decrescente)
-df_display = df_display.sort_values('reatores_ativos', ascending=False, key=lambda x: pd.to_numeric(x, errors='coerce'))
+df_display = df_display.sort_values('reatores_ativos', ascending=False)
 
 st.dataframe(df_display, use_container_width=True)
 
@@ -926,10 +811,13 @@ if not reatores_processados.empty:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.write("**Parâmetros de Entrada:**")
-        st.write(f"- Capacidade do reator: {formatar_br(calc['parametros']['capacidade_litros'], 0)} L")
+        st.write("**Dimensões do Reator:**")
+        st.write(f"- Altura: {formatar_br(primeiro_reator.get('altura_cm', 'N/A'), 0)} cm")
+        st.write(f"- Largura: {formatar_br(primeiro_reator.get('largura_cm', 'N/A'), 0)} cm")
+        st.write(f"- Comprimento: {formatar_br(primeiro_reator.get('comprimento_cm', 'N/A'), 0)} cm")
+        st.write(f"- Capacidade calculada: {formatar_br(calc['parametros']['capacidade_litros'], 0)} L")
         st.write(f"- Densidade do resíduo: {formatar_br(calc['parametros']['densidade_kg_l'], 2)} kg/L")
-        st.write(f"- Massa de resíduos: {formatar_br(calc['residuo_kg'], 1)} kg")
+        st.write(f"- Massa de resíduos estimada: {formatar_br(calc['residuo_kg'], 1)} kg")
         
         st.write("**Parâmetros Científicos:**")
         st.write(f"- Temperatura: {formatar_br(calc['parametros']['T'], 0)}°C")
@@ -958,13 +846,20 @@ if not reatores_processados.empty:
         st.markdown(f"""
         **🧮 Fórmulas Utilizadas no Cálculo:**
 
-        **1. Massa de Resíduos:**
+        **1. Cálculo da Capacidade (Litros):**
+        ```
+        Capacidade (L) = Altura (cm) × Largura (cm) × Comprimento (cm) ÷ 1000
+        Capacidade = {formatar_br(primeiro_reator.get('altura_cm', 0), 0)} × {formatar_br(primeiro_reator.get('largura_cm', 0), 0)} × {formatar_br(primeiro_reator.get('comprimento_cm', 0), 0)} ÷ 1000
+        Capacidade = {formatar_br(calc['parametros']['capacidade_litros'], 0)} L
+        ```
+
+        **2. Massa de Resíduos:**
         ```
         Resíduo (kg) = Capacidade (L) × Densidade (kg/L)
         Resíduo = {formatar_br(calc['parametros']['capacidade_litros'], 0)} × {formatar_br(calc['parametros']['densidade_kg_l'], 2)} = {formatar_br(calc['residuo_kg'], 1)} kg
         ```
 
-        **2. Emissões do Aterro (Cenário Base):**
+        **3. Emissões do Aterro (Cenário Base):**
         ```
         CH₄ Aterro = Resíduo × DOC × DOCf × MCF × F × (16/12) × (1-Ri) × (1-OX)
         CH₄ Aterro = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['DOC'], 3)} × {formatar_br(calc['parametros']['DOCf'], 3)} × 1 × 0,5 × 1,333 × 1 × 0,9
@@ -975,7 +870,7 @@ if not reatores_processados.empty:
         N₂O Aterro = {formatar_br(calc['emissoes_N2O_aterro'], 6)} kg
         ```
 
-        **3. Emissões da Compostagem com Minhocas (Cenário Projeto):**
+        **4. Emissões da Compostagem com Minhocas (Cenário Projeto):**
         ```
         CH₄ Compostagem = Resíduo × TOC × CH₄-C/TOC × (16/12) × (1-umidade)
         CH₄ Compostagem = {formatar_br(calc['residuo_kg'], 1)} × {formatar_br(calc['parametros']['TOC_YANG'], 3)} × {formatar_br(calc['parametros']['CH4_C_FRAC_YANG'], 4)} × 1,333 × {formatar_br(1-calc['parametros']['umidade'], 2)}
@@ -986,7 +881,7 @@ if not reatores_processados.empty:
         N₂O Compostagem = {formatar_br(calc['emissoes_N2O_compostagem'], 5)} kg
         ```
 
-        **4. Emissões em CO₂eq:**
+        **5. Emissões em CO₂eq:**
         ```
         CO₂eq Aterro = (CH₄ Aterro × GWP_CH₄) + (N₂O Aterro × GWP_N₂O)
         CO₂eq Aterro = ({formatar_br(calc['emissoes_CH4_aterro'], 3)} × {formatar_br(calc['parametros']['GWP_CH4_20'], 0)}) + ({formatar_br(calc['emissoes_N2O_aterro'], 6)} × {formatar_br(calc['parametros']['GWP_N2O_20'], 0)})
@@ -997,130 +892,13 @@ if not reatores_processados.empty:
         CO₂eq Compostagem = {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg CO₂eq
         ```
 
-        **5. Emissões Evitadas:**
+        **6. Emissões Evitadas:**
         ```
         Emissões Evitadas = (CO₂eq Aterro - CO₂eq Compostagem) ÷ 1000
         Emissões Evitadas = ({formatar_br(calc['emissao_aterro_kgco2eq'], 1)} - {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)}) ÷ 1000
         Emissões Evitadas = {formatar_br(calc['emissoes_evitadas_tco2eq'], 3)} tCO₂eq
         ```
         """)
-
-# =============================================================================
-# TABELAS COM DADOS REAIS - VERSÃO CORRIGIDA
-# =============================================================================
-
-st.header("📋 Dados das Escolas")
-
-# Colunas conforme seu Excel
-colunas_escolas = [
-    'id_escola', 'nome_escola', 'data_implantacao', 'status', 'ultima_visita', 
-    'observacoes', 'capacidade_total_sistema_litros', 'num_caixas_processamento', 
-    'num_caixas_líquido'
-]
-
-# Filtrar apenas colunas que existem no DataFrame
-colunas_escolas_disponiveis = [col for col in colunas_escolas if col in df_escolas.columns]
-
-if colunas_escolas_disponiveis:
-    # Criar cópia para formatação
-    df_escolas_display = df_escolas[colunas_escolas_disponiveis].copy()
-    
-    # Formatar colunas de data para o padrão brasileiro DD/MM/YYYY
-    colunas_data = ['data_implantacao', 'ultima_visita']
-    for col in colunas_data:
-        if col in df_escolas_display.columns:
-            df_escolas_display[col] = pd.to_datetime(df_escolas_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
-    
-    # Formatar colunas numéricas
-    colunas_numericas = ['capacidade_total_sistema_litros', 'num_caixas_processamento', 
-                         'num_caixas_líquido']
-    for col in colunas_numericas:
-        if col in df_escolas_display.columns:
-            if 'litros' in col:
-                df_escolas_display[col] = df_escolas_display[col].apply(
-                    lambda x: f"{formatar_br(x, 0)} L" if pd.notna(x) else "N/A"
-                )
-            else:
-                df_escolas_display[col] = df_escolas_display[col].apply(
-                    lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A"
-                )
-    
-    st.dataframe(df_escolas_display, use_container_width=True)
-    
-    # Mostrar informações sobre colunas faltantes
-    colunas_faltantes = [col for col in colunas_escolas if col not in df_escolas.columns]
-    if colunas_faltantes:
-        st.info(f"ℹ️ Colunas não encontradas no Excel: {', '.join(colunas_faltantes)}")
-else:
-    st.warning("ℹ️ Nenhuma coluna de escolas disponível no formato esperado")
-
-st.header("📋 Dados dos Reatores")
-
-colunas_reatores = [
-    'id_reator', 'id_escola', 'altura_cm', 'largura_cm', 'comprimento_cm', 
-    'volume_calculado_litros', 'capacidade_litros', 'tipo_caixa', 'status_reator', 
-    'data_ativacao', 'data_encheu', 'data_colheita', 'sólido_kg', 'líquido_litros', 
-    'observacoes'
-]
-
-colunas_reatores_disponiveis = [col for col in colunas_reatores if col in df_reatores.columns]
-
-if colunas_reatores_disponiveis:
-    df_reatores_display = df_reatores[colunas_reatores_disponiveis].copy()
-    
-    # Formatar datas dos reatores
-    colunas_data_reatores = ['data_ativacao', 'data_encheu', 'data_colheita']
-    for col in colunas_data_reatores:
-        if col in df_reatores_display.columns:
-            df_reatores_display[col] = pd.to_datetime(df_reatores_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
-    
-    # Formatar colunas numéricas
-    colunas_numericas = [
-        'altura_cm', 'largura_cm', 'comprimento_cm', 'volume_calculado_litros',
-        'capacidade_litros', 'sólido_kg', 'líquido_litros'
-    ]
-    
-    for col in colunas_numericas:
-        if col in df_reatores_display.columns:
-            if 'litros' in col:
-                df_reatores_display[col] = df_reatores_display[col].apply(
-                    lambda x: f"{formatar_br(x, 1)} L" if pd.notna(x) else "N/A"
-                )
-            elif 'kg' in col:
-                df_reatores_display[col] = df_reatores_display[col].apply(
-                    lambda x: f"{formatar_br(x, 1)} kg" if pd.notna(x) else "N/A"
-                )
-            elif 'cm' in col:
-                df_reatores_display[col] = df_reatores_display[col].apply(
-                    lambda x: f"{formatar_br(x, 1)} cm" if pd.notna(x) else "N/A"
-                )
-            else:
-                df_reatores_display[col] = df_reatores_display[col].apply(
-                    lambda x: formatar_br(x, 1) if pd.notna(x) else "N/A"
-                )
-    
-    # Adicionar nome da escola se disponível
-    if 'id_escola' in df_reatores_display.columns and 'nome_escola' in df_escolas.columns:
-        df_reatores_display = df_reatores_display.merge(
-            df_escolas[['id_escola', 'nome_escola']],
-            on='id_escola',
-            how='left'
-        )
-        # Reordenar colunas para mostrar nome da escola primeiro
-        cols = list(df_reatores_display.columns)
-        if 'nome_escola' in cols:
-            cols.remove('nome_escola')
-            cols.insert(2, 'nome_escola')
-            df_reatores_display = df_reatores_display[cols]
-    
-    st.dataframe(df_reatores_display, use_container_width=True)
-    
-    # Mostrar informações sobre colunas faltantes
-    colunas_faltantes_reatores = [col for col in colunas_reatores if col not in df_reatores.columns]
-    if colunas_faltantes_reatores:
-        st.info(f"ℹ️ Colunas não encontradas no Excel para reatores: {', '.join(colunas_faltantes_reatores)}")
-else:
-    st.warning("ℹ️ Nenhuma coluna de reatores disponível no formato esperado")
 
 # =============================================================================
 # DETALHAMENTO DOS CRÉDITOS (se houver reatores processados)
@@ -1130,15 +908,20 @@ if not reatores_processados.empty:
     st.header("📊 Detalhamento dos Créditos por Reator")
     
     df_detalhes = reatores_processados[[
-        'nome_escola', 'id_reator', 'data_encheu', 'capacidade_litros', 
-        'residuo_kg', 'emissoes_evitadas_tco2eq'
+        'nome_escola', 'id_reator', 'data_encheu', 'altura_cm', 'largura_cm', 'comprimento_cm',
+        'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq'
     ]].copy()
     
     # Formatar valores
     df_detalhes['residuo_kg'] = df_detalhes['residuo_kg'].apply(lambda x: formatar_br(x, 1))
     df_detalhes['emissoes_evitadas_tco2eq'] = df_detalhes['emissoes_evitadas_tco2eq'].apply(lambda x: formatar_tco2eq(x))
-    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: f"{formatar_br(x, 0)} L")
+    df_detalhes['capacidade_litros'] = df_detalhes['capacidade_litros'].apply(lambda x: formatar_br(x, 0))
     df_detalhes['data_encheu'] = pd.to_datetime(df_detalhes['data_encheu']).dt.strftime('%d/%m/%Y')
+    
+    # Formatar dimensões
+    for col in ['altura_cm', 'largura_cm', 'comprimento_cm']:
+        if col in df_detalhes.columns:
+            df_detalhes[col] = df_detalhes[col].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "N/A")
     
     st.dataframe(df_detalhes, use_container_width=True)
 
