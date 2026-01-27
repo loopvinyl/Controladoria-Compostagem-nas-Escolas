@@ -320,12 +320,14 @@ def carregar_dados_excel(url):
                 df_reatores['volume_calculado_litros'] = df_reatores['volume_calculado_litros'].round(2)
         
         # Usar volume calculado se capacidade não estiver disponível
-        if 'capacidade_litros' in df_reatores.columns and 'volume_calculado_litros' in df_reatores.columns:
-            mask = df_reatores['capacidade_litros'].isna()
-            df_reatores.loc[mask, 'capacidade_litros'] = df_reatores.loc[mask, 'volume_calculado_litros']
+        if 'capacidade_litros' not in df_reatores.columns or df_reatores['capacidade_litros'].isna().all():
+            if 'volume_calculado_litros' in df_reatores.columns:
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros']
         
         # Preencher capacidade padrão de 100L se ainda estiver vazia
-        if 'capacidade_litros' in df_reatores.columns:
+        if 'capacidade_litros' not in df_reatores.columns:
+            df_reatores['capacidade_litros'] = 100
+        else:
             df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
         
         return df_escolas, df_reatores, df_gastos
@@ -442,6 +444,10 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     if reatores_cheios.empty:
         return pd.DataFrame(), 0, 0, []
     
+    # Garantir que a coluna capacidade_litros existe
+    if 'capacidade_litros' not in reatores_cheios.columns:
+        reatores_cheios['capacidade_litros'] = 100
+    
     # Calcular para cada reator
     resultados = []
     total_residuo = 0
@@ -449,7 +455,7 @@ def processar_reatores_cheios(df_reatores, df_escolas):
     detalhes_calculo = []
     
     for _, reator in reatores_cheios.iterrows():
-        capacidade = reator['capacidade_litros']
+        capacidade = reator['capacidade_litros'] if pd.notna(reator['capacidade_litros']) else 100
         resultado_detalhado = calcular_emissoes_evitadas_reator_detalhado(capacidade)
         residuo_kg = resultado_detalhado['residuo_kg']
         emissoes_evitadas = resultado_detalhado['emissoes_evitadas_tco2eq']
@@ -769,7 +775,7 @@ if 'reatores_ativos' in df_display.columns:
     df_display['reatores_ativos'] = df_display['reatores_ativos'].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "0")
 
 # Ordenar por quantidade de reatores ativos (decrescente)
-df_display = df_display.sort_values('reatores_ativos', ascending=False, key=lambda x: pd.to_numeric(x, errors='coerce'))
+df_display = df_display.sort_values('reatores_ativos', ascending=False)
 
 st.dataframe(df_display, use_container_width=True)
 
