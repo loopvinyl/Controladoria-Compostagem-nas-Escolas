@@ -724,7 +724,7 @@ else:
     st.info("ℹ️ Nenhum gasto registrado no sistema.")
 
 # =============================================================================
-# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS
+# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS - CORRIGIDA
 # =============================================================================
 
 st.header("🏫 Análise de Escolas Ativas com Reatores Ativos")
@@ -747,7 +747,7 @@ with col3:
     total_reatores_ativos_analise = escolas_com_reatores_ativos['reatores_ativos'].sum()
     st.metric("Total de Reatores Ativos (Análise)", formatar_br(total_reatores_ativos_analise, 0))
 
-# Tabela detalhada
+# Tabela detalhada - SEM CORES E COM DATAS NO FORMATO DO EXCEL
 st.subheader("📋 Detalhamento por Escola")
 
 # Selecionar colunas para exibição
@@ -760,20 +760,18 @@ if 'data_implantacao' in escolas_com_reatores_ativos.columns:
 # Criar DataFrame para exibição
 df_display = escolas_com_reatores_ativos[colunas_display].copy()
 
+# Formatar coluna data_implantacao no formato DD/MM/YYYY (igual Excel)
+if 'data_implantacao' in df_display.columns:
+    df_display['data_implantacao'] = pd.to_datetime(df_display['data_implantacao'], errors='coerce').dt.strftime('%d/%m/%Y')
+
+# Formatar reatores_ativos como número inteiro
+if 'reatores_ativos' in df_display.columns:
+    df_display['reatores_ativos'] = df_display['reatores_ativos'].apply(lambda x: formatar_br(x, 0) if pd.notna(x) else "0")
+
 # Ordenar por quantidade de reatores ativos (decrescente)
-df_display = df_display.sort_values('reatores_ativos', ascending=False)
+df_display = df_display.sort_values('reatores_ativos', ascending=False, key=lambda x: pd.to_numeric(x, errors='coerce'))
 
-# Adicionar formatação condicional
-def colorir_reatores_ativos(val):
-    if val > 0:
-        return 'background-color: #90EE90'  # Verde claro para reatores ativos
-    else:
-        return 'background-color: #FFCCCB'   # Vermelho claro para sem reatores
-
-# Aplicar estilo
-styled_df = df_display.style.applymap(colorir_reatores_ativos, subset=['reatores_ativos'])
-
-st.dataframe(styled_df, use_container_width=True)
+st.dataframe(df_display, use_container_width=True)
 
 # Análise estatística
 st.subheader("📈 Estatísticas da Implantação")
