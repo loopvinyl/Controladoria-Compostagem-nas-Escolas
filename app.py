@@ -210,7 +210,11 @@ def carregar_dados_excel(url):
         if 'id_reator' in df_reatores.columns:
             df_reatores = df_reatores.dropna(subset=['id_reator'])
             df_reatores = df_reatores[df_reatores['id_reator'].astype(str).str.strip() != '']
+            # Remove duplicatas
+            df_reatores = df_reatores.drop_duplicates(subset=['id_reator'], keep='first')
         loading_placeholder.empty()
+
+        # Datas
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
@@ -230,23 +234,45 @@ def carregar_dados_excel(url):
                 df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], dayfirst=True, errors='coerce')
             except:
                 df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], errors='coerce')
+
+        # Tratamento de capacidade_total_sistema_litros nas escolas
         if 'capacidade_total_sistema_litros' in df_escolas.columns:
             df_escolas['capacidade_total_sistema_litros'] = pd.to_numeric(df_escolas['capacidade_total_sistema_litros'], errors='coerce')
-        dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
-        if all(col in df_reatores.columns for col in dimensoes_cols):
-            for col in dimensoes_cols:
-                df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
-            df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * 
-                                               df_reatores['largura_cm'] * 
-                                               df_reatores['comprimento_cm']) / 1000
-            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].round(2)
-            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
-            df_reatores['residuo_kg_estimado'] = df_reatores['capacidade_litros'] * DENSIDADE_PADRAO
-            df_reatores['residuo_kg_estimado'] = df_reatores['residuo_kg_estimado'].round(1)
+
+        # NOVA LÓGICA DE CAPACIDADE DOS REATORES
+        # Se existir 'volume_calculado_litros', usa-o; senão calcula por dimensões
+        if 'volume_calculado_litros' in df_reatores.columns:
+            df_reatores['volume_calculado_litros'] = pd.to_numeric(df_reatores['volume_calculado_litros'], errors='coerce')
+            dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
+            if all(col in df_reatores.columns for col in dimensoes_cols):
+                for col in dimensoes_cols:
+                    df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
+                calculado = (df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm']) / 1000
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros'].fillna(calculado)
+            else:
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros'].fillna(100)
         else:
-            st.warning("⚠️ Colunas de dimensões não encontradas. Usando capacidade padrão de 100L para todos os reatores.")
-            df_reatores['capacidade_litros'] = 100
-            df_reatores['residuo_kg_estimado'] = 100 * DENSIDADE_PADRAO
+            dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
+            if all(col in df_reatores.columns for col in dimensoes_cols):
+                for col in dimensoes_cols:
+                    df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
+                df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * 
+                                                    df_reatores['largura_cm'] * 
+                                                    df_reatores['comprimento_cm']) / 1000
+            else:
+                df_reatores['capacidade_litros'] = 100
+
+        df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].round(2).fillna(100)
+
+        # NOVA LÓGICA DE PESO ESTIMADO
+        if 'peso_estimado_kg' in df_reatores.columns:
+            df_reatores['peso_estimado_kg'] = pd.to_numeric(df_reatores['peso_estimado_kg'], errors='coerce')
+            df_reatores['residuo_kg_estimado'] = df_reatores['peso_estimado_kg'].fillna(
+                df_reatores['capacidade_litros'] * DENSIDADE_PADRAO)
+        else:
+            df_reatores['residuo_kg_estimado'] = df_reatores['capacidade_litros'] * DENSIDADE_PADRAO
+        df_reatores['residuo_kg_estimado'] = df_reatores['residuo_kg_estimado'].round(1)
+
         return df_escolas, df_reatores, df_gastos
     except Exception as e:
         if 'loading_placeholder' in locals():
@@ -359,6 +385,9 @@ def calcular_emissoes_evitadas_reator(capacidade_litros):
 
 def processar_reatores_cheios(df_reatores, df_escolas):
     reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
+    # Remove reatores do tipo Líquido (coletores de chorume)
+    if 'tipo_caixa' in reatores_cheios.columns:
+        reatores_cheios = reatores_cheios[~reatores_cheios['tipo_caixa'].str.lower().str.contains('líquido|liquido')]
     if reatores_cheios.empty:
         return pd.DataFrame(), 0, 0, []
     resultados = []
@@ -495,7 +524,7 @@ with col4:
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
 if reatores_processados.empty:
-    st.info("ℹ️ Nenhum reator cheio encontrado.")
+    st.info("ℹ️ Nenhum reator cheio encontrado (ou todos são do tipo Líquido).")
 else:
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -710,7 +739,6 @@ if not reatores_processados.empty:
     # =========================================================================
     st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
     try:
-        # 1. Busca histórico do carbono (CO2.L) e do Euro (EURBRL=X)
         ticker_carbono = yf.Ticker("CO2.L")
         hist = ticker_carbono.history(period="1mo")
         if hist.empty:
@@ -721,8 +749,7 @@ if not reatores_processados.empty:
         if hist_euro.empty:
             raise ValueError("Sem dados históricos do EUR/BRL")
 
-        # 2. Alinha as datas e converte
-        hist['Taxa_EURBRL'] = hist_euro['Close']  # taxa de câmbio da mesma data
+        hist['Taxa_EURBRL'] = hist_euro['Close']
         hist['Preço (R$/tCO₂eq)'] = hist['Close'] * hist['Taxa_EURBRL']
 
         df_real = hist.reset_index()[['Date', 'Preço (R$/tCO₂eq)']]
@@ -732,7 +759,6 @@ if not reatores_processados.empty:
                            title='Cotação Real do Carbono (CO2.L convertido pelo EUR/BRL diário)',
                            markers=True)
 
-        # Linha do último preço
         ultimo_preco = df_real['Preço (R$/tCO₂eq)'].iloc[-1]
         fig_merc.add_hline(y=ultimo_preco, line_dash="dash", line_color="red",
                            annotation_text="Preço Atual")
@@ -740,7 +766,6 @@ if not reatores_processados.empty:
         st.caption("Fonte: Yahoo Finance (CO2.L e EURBRL=X) - Conversão data a data")
     except Exception as e:
         st.warning(f"Não foi possível obter o histórico real ({e}). Exibindo simulação de referência.")
-        # Fallback com simulação
         datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
         preco_base = st.session_state.preco_carbono * st.session_state.taxa_cambio
         np.random.seed(42)
