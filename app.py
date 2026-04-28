@@ -705,19 +705,43 @@ if not reatores_processados.empty:
     else:
         st.info("Nenhuma transação realizada ainda.")
 
-    st.subheader("📈 Mercado de Carbono - Simulação de Variação")
-    datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
-    preco_base = preco_carbono_reais
-    np.random.seed(42)
-    variacao = np.random.normal(0, 0.02, 30).cumsum()
-    precos_sim = preco_base * (1 + variacao)
-    df_mercado = pd.DataFrame({'Data': datas, 'Preço (R$/tCO₂eq)': precos_sim})
-    fig_merc = px.line(df_mercado, x='Data', y='Preço (R$/tCO₂eq)',
-                       title='Simulação do Preço do Carbono nos Últimos 30 Dias',
-                       markers=True)
-    fig_merc.add_hline(y=preco_base, line_dash="dash", line_color="red",
-                       annotation_text="Preço Atual")
-    st.plotly_chart(fig_merc, use_container_width=True)
+    # Seção de gráfico do mercado REAL CO2.L
+    st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
+    try:
+        # Busca histórico real de 1 mês
+        ticker = yf.Ticker("CO2.L")
+        hist = ticker.history(period="1mo")
+        if hist.empty:
+            raise ValueError("Sem dados históricos")
+        # Preço de fechamento em Euro, converte para Real
+        hist['Preço (R$/tCO₂eq)'] = hist['Close'] * st.session_state.taxa_cambio
+        df_real = hist.reset_index()[['Date', 'Preço (R$/tCO₂eq)']]
+        df_real = df_real.rename(columns={'Date': 'Data'})
+
+        fig_merc = px.line(df_real, x='Data', y='Preço (R$/tCO₂eq)',
+                           title='Cotação Real do Carbono (CO2.L)',
+                           markers=True)
+        # Linha do preço atual (média do último fechamento)
+        ultimo_preco = hist['Close'].iloc[-1] * st.session_state.taxa_cambio
+        fig_merc.add_hline(y=ultimo_preco, line_dash="dash", line_color="red",
+                           annotation_text="Preço Atual")
+        st.plotly_chart(fig_merc, use_container_width=True)
+        st.caption("Fonte: Yahoo Finance (CO2.L) - ICE EUA Futures")
+    except Exception as e:
+        st.warning(f"Não foi possível obter o histórico real ({e}). Exibindo simulação de referência.")
+        # Fallback com simulação
+        datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
+        preco_base = st.session_state.preco_carbono * st.session_state.taxa_cambio
+        np.random.seed(42)
+        variacao = np.random.normal(0, 0.02, 30).cumsum()
+        precos_sim = preco_base * (1 + variacao)
+        df_mercado = pd.DataFrame({'Data': datas, 'Preço (R$/tCO₂eq)': precos_sim})
+        fig_merc = px.line(df_mercado, x='Data', y='Preço (R$/tCO₂eq)',
+                           title='Simulação do Preço do Carbono nos Últimos 30 Dias',
+                           markers=True)
+        fig_merc.add_hline(y=preco_base, line_dash="dash", line_color="red",
+                           annotation_text="Preço Atual")
+        st.plotly_chart(fig_merc, use_container_width=True)
 
 else:
     st.info("Nenhum crédito disponível para negociação. Aguarde reatores serem preenchidos.")
