@@ -1,9 +1,8 @@
-streamlit>=1.28.0
-pandas>=1.5.0
-plotly>=5.13.0
-openpyxl>=3.0.0
-requests>=2.25.0
-beautifulsoup4>=4.9.0
-numpy>=1.21.0
-matplotlib>=3.5.0
-seaborn>=0.11.0
+streamlit
+pandas
+plotly
+openpyxl
+requests
+beautifulsoup4
+numpy
+yfinance
