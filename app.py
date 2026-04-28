@@ -622,7 +622,11 @@ with col_disponivel:
     st.metric("🎯 Créditos em Carteira", formatar_tco2eq(creditos_em_carteira))
 
 if not reatores_processados.empty:
+    # =========================================================================
+    # CORREÇÃO: remover reatores duplicados (baseado no id_reator)
+    # =========================================================================
     df_ativos = reatores_processados[['nome_escola', 'id_reator', 'emissoes_evitadas_tco2eq']].copy()
+    df_ativos = df_ativos.drop_duplicates(subset=['id_reator'])  # <-- AQUI ELIMINAMOS DUPLICATAS
     preco_carbono_reais = st.session_state.preco_carbono * st.session_state.taxa_cambio
     df_ativos['preco_unitario'] = preco_carbono_reais
     df_ativos['valor_total'] = df_ativos['emissoes_evitadas_tco2eq'] * df_ativos['preco_unitario']
@@ -710,7 +714,6 @@ if not reatores_processados.empty:
     # =========================================================================
     st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
     try:
-        # 1. Busca histórico do carbono (CO2.L) e do Euro (EURBRL=X)
         ticker_carbono = yf.Ticker("CO2.L")
         hist = ticker_carbono.history(period="1mo")
         if hist.empty:
@@ -721,8 +724,7 @@ if not reatores_processados.empty:
         if hist_euro.empty:
             raise ValueError("Sem dados históricos do EUR/BRL")
 
-        # 2. Alinha as datas e converte
-        hist['Taxa_EURBRL'] = hist_euro['Close']  # taxa de câmbio da mesma data
+        hist['Taxa_EURBRL'] = hist_euro['Close']
         hist['Preço (R$/tCO₂eq)'] = hist['Close'] * hist['Taxa_EURBRL']
 
         df_real = hist.reset_index()[['Date', 'Preço (R$/tCO₂eq)']]
@@ -731,8 +733,6 @@ if not reatores_processados.empty:
         fig_merc = px.line(df_real, x='Data', y='Preço (R$/tCO₂eq)',
                            title='Cotação Real do Carbono (CO2.L convertido pelo EUR/BRL diário)',
                            markers=True)
-
-        # Linha do último preço
         ultimo_preco = df_real['Preço (R$/tCO₂eq)'].iloc[-1]
         fig_merc.add_hline(y=ultimo_preco, line_dash="dash", line_color="red",
                            annotation_text="Preço Atual")
@@ -740,7 +740,6 @@ if not reatores_processados.empty:
         st.caption("Fonte: Yahoo Finance (CO2.L e EURBRL=X) - Conversão data a data")
     except Exception as e:
         st.warning(f"Não foi possível obter o histórico real ({e}). Exibindo simulação de referência.")
-        # Fallback com simulação
         datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
         preco_base = st.session_state.preco_carbono * st.session_state.taxa_cambio
         np.random.seed(42)
