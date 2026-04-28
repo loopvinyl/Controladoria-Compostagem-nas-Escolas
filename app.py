@@ -54,8 +54,9 @@ st.markdown("""
 **📚 Referências Científicas:**  
 - IPCC (2006). Guidelines for National Greenhouse Gas Inventories  
 - Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China  
-- Zziwa et al. (adaptado). Modelo de emissões para resíduos orgânicos  
+- Wang et al. (2017). N₂O emissions from landfills  
+- **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
 - GWP 20 anos: CH₄=79.7, N₂O=273 (IPCC AR6)
 
-**✅ Cálculo Corrigido:** Distribuição temporal adequada com kernel não normalizado para aterro
+**✅ Cálculo Corrigido:** Distribuição temporal com kernel não normalizado no aterro, acrescido do fator φ.
 """)
