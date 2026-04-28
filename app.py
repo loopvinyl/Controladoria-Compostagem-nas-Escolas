@@ -643,6 +643,16 @@ else:
 
 st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
 
+st.markdown("""
+🌱 **Saiba quanto você precisa neutralizar:**  
+A matriz elétrica brasileira emite, em média, **0,042 kg de CO₂eq por kWh** (Fator Médio do SIN – MCTI).  
+Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,0042 tCO₂eq**.
+
+> 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,0084 tCO₂eq** para neutralizar seu impacto mensal.*
+
+Use o campo **Qtd (tCO₂eq)** abaixo para adquirir essa quantidade de créditos das escolas. Cada crédito custa o valor de mercado do carbono convertido em reais.
+""")
+
 col_saldo, col_disponivel = st.columns(2)
 with col_saldo:
     st.metric("💰 Seu Saldo (R$ Virtual)", formatar_moeda_br(st.session_state.carteira_r_virtual))
@@ -660,7 +670,7 @@ if not reatores_processados.empty:
     st.subheader("📊 Ativos Disponíveis para Compra (Créditos de Carbono por Reator)")
 
     for idx, row in df_ativos.iterrows():
-        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 3])  # coluna mais larga para o input
         with col1:
             st.write(f"**{row['nome_escola']}**")
             st.caption(f"Reator: {row['id_reator']}")
@@ -676,9 +686,12 @@ if not reatores_processados.empty:
                 min_value=0.0,
                 max_value=float(row['emissoes_evitadas_tco2eq']),
                 value=0.0,
-                step=0.1,
+                step=0.0001,   # incremento de 0,0001 tCO₂eq
+                format="%.4f", # exibe quatro casas decimais
                 key=f"compra_{idx}_{row['id_reator']}"
             )
+            st.caption("Use as setas ou digite (passo 0,0001 t)")
+
             valor_compra = quantidade_comprar * row['preco_unitario']
             if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):
                 if quantidade_comprar > 0:
