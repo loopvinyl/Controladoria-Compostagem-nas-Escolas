@@ -649,8 +649,6 @@ A matriz elétrica brasileira emite, em média, **0,042 kg de CO₂eq por kWh** 
 Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,0042 tCO₂eq**.
 
 > 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,0084 tCO₂eq** para neutralizar seu impacto mensal.*
-
-Use o campo **Qtd (tCO₂eq)** abaixo para adquirir essa quantidade de créditos das escolas. Cada crédito custa o valor de mercado do carbono convertido em reais.
 """)
 
 col_saldo, col_disponivel = st.columns(2)
@@ -661,16 +659,39 @@ with col_disponivel:
     st.metric("🎯 Créditos em Carteira", formatar_tco2eq(creditos_em_carteira))
 
 if not reatores_processados.empty:
+    # Preparar DataFrame de ativos
     df_ativos = reatores_processados[['nome_escola', 'id_reator', 'emissoes_evitadas_tco2eq']].copy()
     preco_carbono_reais = st.session_state.preco_carbono * st.session_state.taxa_cambio
     df_ativos['preco_unitario'] = preco_carbono_reais
     df_ativos['valor_total'] = df_ativos['emissoes_evitadas_tco2eq'] * df_ativos['preco_unitario']
     df_ativos['disponivel'] = True
 
+    # --- CALCULADORA DE NEUTRALIZAÇÃO PESSOAL ---
+    st.subheader("🔌 Calcule sua necessidade de créditos")
+    kwh_input = st.number_input("Digite seu consumo mensal (kWh):", min_value=0.0, value=0.0, step=1.0, format="%.0f")
+    if kwh_input > 0:
+        fator_emissao = 0.042  # kg CO2/kWh
+        toneladas_necessarias = (kwh_input * fator_emissao) / 1000
+        st.info(f"Para **{kwh_input:.0f} kWh**, você precisa neutralizar **{toneladas_necessarias:.4f} tCO₂eq**.")
+        # Verificar quais escolas têm créditos suficientes
+        escolas_suficientes = df_ativos[df_ativos['emissoes_evitadas_tco2eq'] >= toneladas_necessarias]
+        if not escolas_suficientes.empty:
+            nomes = ", ".join([f"{row['nome_escola']} ({formatar_tco2eq(row['emissoes_evitadas_tco2eq'])})" for _, row in escolas_suficientes.iterrows()])
+            st.success(f"✅ **{len(escolas_suficientes)} escola(s)** têm créditos suficientes: {nomes}.")
+        else:
+            st.warning(f"❌ Nenhuma escola tem créditos suficientes para {toneladas_necessarias:.4f} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores.")
+    else:
+        st.info("Digite seus kWh para descobrir quanto precisa compensar.")
+
+    st.markdown("---")
+    st.markdown("""
+    Use o campo **Qtd (tCO₂eq)** abaixo para adquirir essa quantidade de créditos das escolas. Cada crédito custa o valor de mercado do carbono convertido em reais.
+    """)
+
     st.subheader("📊 Ativos Disponíveis para Compra (Créditos de Carbono por Reator)")
 
     for idx, row in df_ativos.iterrows():
-        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 3])  # coluna mais larga para o input
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 3])
         with col1:
             st.write(f"**{row['nome_escola']}**")
             st.caption(f"Reator: {row['id_reator']}")
@@ -686,8 +707,8 @@ if not reatores_processados.empty:
                 min_value=0.0,
                 max_value=float(row['emissoes_evitadas_tco2eq']),
                 value=0.0,
-                step=0.0001,   # incremento de 0,0001 tCO₂eq
-                format="%.4f", # exibe quatro casas decimais
+                step=0.0001,
+                format="%.4f",
                 key=f"compra_{idx}_{row['id_reator']}"
             )
             st.caption("Use as setas ou digite (passo 0,0001 t)")
