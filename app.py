@@ -648,10 +648,10 @@ if not reatores_processados.empty:
                 max_value=float(row['emissoes_evitadas_tco2eq']),
                 value=0.0,
                 step=0.1,
-                key=f"compra_{idx}_{row['id_reator']}"  # CHAVE CORRIGIDA COM ÍNDICE
+                key=f"compra_{idx}_{row['id_reator']}"
             )
             valor_compra = quantidade_comprar * row['preco_unitario']
-            if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):  # CHAVE CORRIGIDA COM ÍNDICE
+            if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):
                 if quantidade_comprar > 0:
                     if st.session_state.carteira_r_virtual >= valor_compra:
                         st.session_state.carteira_r_virtual -= valor_compra
@@ -705,28 +705,39 @@ if not reatores_processados.empty:
     else:
         st.info("Nenhuma transação realizada ainda.")
 
-    # Seção de gráfico do mercado REAL CO2.L
+    # =========================================================================
+    # GRÁFICO DO MERCADO – COTAÇÃO REAL CO2.L COM CONVERSÃO DATA A DATA
+    # =========================================================================
     st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
     try:
-        # Busca histórico real de 1 mês
-        ticker = yf.Ticker("CO2.L")
-        hist = ticker.history(period="1mo")
+        # 1. Busca histórico do carbono (CO2.L) e do Euro (EURBRL=X)
+        ticker_carbono = yf.Ticker("CO2.L")
+        hist = ticker_carbono.history(period="1mo")
         if hist.empty:
-            raise ValueError("Sem dados históricos")
-        # Preço de fechamento em Euro, converte para Real
-        hist['Preço (R$/tCO₂eq)'] = hist['Close'] * st.session_state.taxa_cambio
+            raise ValueError("Sem dados históricos do CO2.L")
+
+        ticker_euro = yf.Ticker("EURBRL=X")
+        hist_euro = ticker_euro.history(period="1mo")
+        if hist_euro.empty:
+            raise ValueError("Sem dados históricos do EUR/BRL")
+
+        # 2. Alinha as datas e converte
+        hist['Taxa_EURBRL'] = hist_euro['Close']  # taxa de câmbio da mesma data
+        hist['Preço (R$/tCO₂eq)'] = hist['Close'] * hist['Taxa_EURBRL']
+
         df_real = hist.reset_index()[['Date', 'Preço (R$/tCO₂eq)']]
         df_real = df_real.rename(columns={'Date': 'Data'})
 
         fig_merc = px.line(df_real, x='Data', y='Preço (R$/tCO₂eq)',
-                           title='Cotação Real do Carbono (CO2.L)',
+                           title='Cotação Real do Carbono (CO2.L convertido pelo EUR/BRL diário)',
                            markers=True)
-        # Linha do preço atual (média do último fechamento)
-        ultimo_preco = hist['Close'].iloc[-1] * st.session_state.taxa_cambio
+
+        # Linha do último preço
+        ultimo_preco = df_real['Preço (R$/tCO₂eq)'].iloc[-1]
         fig_merc.add_hline(y=ultimo_preco, line_dash="dash", line_color="red",
                            annotation_text="Preço Atual")
         st.plotly_chart(fig_merc, use_container_width=True)
-        st.caption("Fonte: Yahoo Finance (CO2.L) - ICE EUA Futures")
+        st.caption("Fonte: Yahoo Finance (CO2.L e EURBRL=X) - Conversão data a data")
     except Exception as e:
         st.warning(f"Não foi possível obter o histórico real ({e}). Exibindo simulação de referência.")
         # Fallback com simulação
