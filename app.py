@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
@@ -184,6 +183,13 @@ def inicializar_session_state():
         st.session_state.periodo_credito = 10
     if 'k_ano' not in st.session_state:
         st.session_state.k_ano = K_ANO_PADRAO
+    # NOVAS INICIALIZAÇÕES PARA A BOLSA DE CARBONO
+    if 'carteira_r_virtual' not in st.session_state:
+        st.session_state.carteira_r_virtual = 10.0  # R$10 iniciais
+    if 'portfolio_creditos' not in st.session_state:
+        st.session_state.portfolio_creditos = {}
+    if 'historico_transacoes' not in st.session_state:
+        st.session_state.historico_transacoes = []
 
 # =============================================================================
 # CARREGAMENTO DOS DADOS REAIS
@@ -601,6 +607,120 @@ if 'status' in df_escolas.columns:
         st.info("ℹ️ Sem dados de status para escolas")
 else:
     st.info("ℹ️ Coluna 'status' não encontrada")
+
+# =============================================================================
+# NOVA SEÇÃO: BOLSA DE VALORES DE CARBONO DAS ESCOLAS (R$ VIRTUAL)
+# =============================================================================
+
+st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
+
+col_saldo, col_disponivel = st.columns(2)
+with col_saldo:
+    st.metric("💰 Seu Saldo (R$ Virtual)", formatar_moeda_br(st.session_state.carteira_r_virtual))
+with col_disponivel:
+    creditos_em_carteira = sum(st.session_state.portfolio_creditos.values())
+    st.metric("🎯 Créditos em Carteira", formatar_tco2eq(creditos_em_carteira))
+
+if not reatores_processados.empty:
+    df_ativos = reatores_processados[['nome_escola', 'id_reator', 'emissoes_evitadas_tco2eq']].copy()
+    preco_carbono_reais = st.session_state.preco_carbono * st.session_state.taxa_cambio
+    df_ativos['preco_unitario'] = preco_carbono_reais
+    df_ativos['valor_total'] = df_ativos['emissoes_evitadas_tco2eq'] * df_ativos['preco_unitario']
+    df_ativos['disponivel'] = True
+
+    st.subheader("📊 Ativos Disponíveis para Compra (Créditos de Carbono por Reator)")
+
+    for idx, row in df_ativos.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
+        with col1:
+            st.write(f"**{row['nome_escola']}**")
+            st.caption(f"Reator: {row['id_reator']}")
+        with col2:
+            st.metric("Créditos", formatar_tco2eq(row['emissoes_evitadas_tco2eq']))
+        with col3:
+            st.metric("Preço/tCO₂eq", formatar_moeda_br(row['preco_unitario']))
+        with col4:
+            st.metric("Valor Total", formatar_moeda_br(row['valor_total']))
+        with col5:
+            quantidade_comprar = st.number_input(
+                "Qtd (tCO₂eq)",
+                min_value=0.0,
+                max_value=float(row['emissoes_evitadas_tco2eq']),
+                value=0.0,
+                step=0.1,
+                key=f"compra_{row['id_reator']}"
+            )
+            valor_compra = quantidade_comprar * row['preco_unitario']
+            if st.button("🛒 Comprar", key=f"btn_{row['id_reator']}"):
+                if quantidade_comprar > 0:
+                    if st.session_state.carteira_r_virtual >= valor_compra:
+                        st.session_state.carteira_r_virtual -= valor_compra
+                        if row['id_reator'] in st.session_state.portfolio_creditos:
+                            st.session_state.portfolio_creditos[row['id_reator']] += quantidade_comprar
+                        else:
+                            st.session_state.portfolio_creditos[row['id_reator']] = quantidade_comprar
+                        st.session_state.historico_transacoes.append({
+                            'data': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                            'id_reator': row['id_reator'],
+                            'escola': row['nome_escola'],
+                            'quantidade_tco2eq': quantidade_comprar,
+                            'preco_unitario': row['preco_unitario'],
+                            'valor_total': valor_compra,
+                            'tipo': 'Compra'
+                        })
+                        st.success(f"✅ Compra realizada! Você adquiriu {formatar_tco2eq(quantidade_comprar)} da {row['nome_escola']}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Saldo insuficiente!")
+                else:
+                    st.warning("⚠️ Selecione uma quantidade maior que zero.")
+
+    st.subheader("📂 Seu Portfólio de Créditos de Carbono")
+    if st.session_state.portfolio_creditos:
+        portfolio_data = []
+        for id_reator, qtd in st.session_state.portfolio_creditos.items():
+            info = reatores_processados[reatores_processados['id_reator'] == id_reator].iloc[0]
+            portfolio_data.append({
+                'Escola': info['nome_escola'],
+                'Reator': id_reator,
+                'Créditos (tCO₂eq)': qtd,
+                'Preço Médio (R$/tCO₂eq)': preco_carbono_reais,
+                'Valor Atual (R$)': qtd * preco_carbono_reais
+            })
+        df_portfolio = pd.DataFrame(portfolio_data)
+        st.dataframe(df_portfolio, use_container_width=True)
+        fig_port = px.pie(df_portfolio, values='Créditos (tCO₂eq)', names='Escola',
+                          title='Distribuição da Carteira de Créditos')
+        st.plotly_chart(fig_port, use_container_width=True)
+    else:
+        st.info("Nenhum crédito em carteira. Compre créditos das escolas acima!")
+
+    st.subheader("📜 Histórico de Transações")
+    if st.session_state.historico_transacoes:
+        df_hist = pd.DataFrame(st.session_state.historico_transacoes)
+        df_hist_display = df_hist.copy()
+        df_hist_display['valor_total'] = df_hist_display['valor_total'].apply(lambda x: formatar_moeda_br(x))
+        df_hist_display['quantidade_tco2eq'] = df_hist_display['quantidade_tco2eq'].apply(lambda x: formatar_tco2eq(x))
+        st.dataframe(df_hist_display, use_container_width=True)
+    else:
+        st.info("Nenhuma transação realizada ainda.")
+
+    st.subheader("📈 Mercado de Carbono - Simulação de Variação")
+    datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
+    preco_base = preco_carbono_reais
+    np.random.seed(42)
+    variacao = np.random.normal(0, 0.02, 30).cumsum()
+    precos_sim = preco_base * (1 + variacao)
+    df_mercado = pd.DataFrame({'Data': datas, 'Preço (R$/tCO₂eq)': precos_sim})
+    fig_merc = px.line(df_mercado, x='Data', y='Preço (R$/tCO₂eq)',
+                       title='Simulação do Preço do Carbono nos Últimos 30 Dias',
+                       markers=True)
+    fig_merc.add_hline(y=preco_base, line_dash="dash", line_color="red",
+                       annotation_text="Preço Atual")
+    st.plotly_chart(fig_merc, use_container_width=True)
+
+else:
+    st.info("Nenhum crédito disponível para negociação. Aguarde reatores serem preenchidos.")
 
 st.markdown("---")
 st.markdown("""
