@@ -648,10 +648,10 @@ if not reatores_processados.empty:
                 max_value=float(row['emissoes_evitadas_tco2eq']),
                 value=0.0,
                 step=0.1,
-                key=f"compra_{row['id_reator']}"
+                key=f"compra_{idx}_{row['id_reator']}"  # CHAVE CORRIGIDA COM ÍNDICE
             )
             valor_compra = quantidade_comprar * row['preco_unitario']
-            if st.button("🛒 Comprar", key=f"btn_{row['id_reator']}"):
+            if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):  # CHAVE CORRIGIDA COM ÍNDICE
                 if quantidade_comprar > 0:
                     if st.session_state.carteira_r_virtual >= valor_compra:
                         st.session_state.carteira_r_virtual -= valor_compra
