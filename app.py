@@ -645,10 +645,11 @@ st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
 
 st.markdown("""
 🌱 **Saiba quanto você precisa neutralizar:**  
-A matriz elétrica brasileira emite, em média, **0,042 kg de CO₂eq por kWh** (Fator Médio do SIN – MCTI).  
-Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,0042 tCO₂eq**.
+A matriz elétrica brasileira emite, em média, **0,0461 kg de CO₂eq por kWh**  
+([Fator Médio do SIN – MCTI/SIRENE, ano 2025](https://www.gov.br/mcti/pt-br/acompanhe-o-mcti/sirene/dados-e-ferramentas/fatores-de-emissao)).  
+Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,00461 tCO₂eq**.
 
-> 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,0084 tCO₂eq** para neutralizar seu impacto mensal.*
+> 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,00922 tCO₂eq** para neutralizar seu impacto mensal.*
 """)
 
 col_saldo, col_disponivel = st.columns(2)
@@ -669,7 +670,7 @@ if not reatores_processados.empty:
     st.subheader("🔌 Calcule sua necessidade de créditos")
     kwh_input = st.number_input("Digite seu consumo mensal (kWh):", min_value=0.0, value=0.0, step=1.0, format="%.0f")
     if kwh_input > 0:
-        fator_emissao = 0.042  # kg CO2/kWh
+        fator_emissao = 0.0461  # kg CO2/kWh (Fator Médio Anual SIN 2025)
         toneladas_necessarias = (kwh_input * fator_emissao) / 1000
         st.info(f"Para **{kwh_input:.0f} kWh**, você precisa neutralizar **{formatar_br(toneladas_necessarias, 4)} tCO₂eq**.")
         
@@ -721,7 +722,7 @@ if not reatores_processados.empty:
                 format="%.4f",
                 key=f"compra_{idx}_{row['id_reator']}"
             )
-            st.caption("Use as setas ou digite (passo 0,0001 t)")  # mantido com ponto devido ao widget, mas texto orienta
+            st.caption("Use as setas ou digite (passo 0,0001 t)")
 
             valor_compra = quantidade_comprar * row['preco_unitario']
             if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):
