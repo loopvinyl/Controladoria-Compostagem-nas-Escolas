@@ -478,7 +478,7 @@ with st.sidebar:
     **📊 Parâmetros de cálculo:**
     - Período: **{periodo_credito} anos**
     - Taxa de decaimento (k): **{formatar_br(k_ano, 3)} ano⁻¹**
-    - GWP: **20 anos** (CH₄=79.7, N₂O=273)
+    - GWP: **20 anos** (CH₄=79,7, N₂O=273)
     - φ (UNFCCC 2024): **{PHI_BASELINE}** (clima úmido)
     """)
     st.header("🔍 Filtros")
@@ -508,7 +508,7 @@ st.info(f"""
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L
 - **Período de cálculo:** {periodo_credito} anos
 - **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
-- **GWP:** 20 anos (CH₄=79.7, N₂O=273)
+- **GWP:** 20 anos (CH₄=79,7, N₂O=273)
 - ***Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
 """)
 
@@ -659,27 +659,37 @@ with col_disponivel:
     st.metric("🎯 Créditos em Carteira", formatar_tco2eq(creditos_em_carteira))
 
 if not reatores_processados.empty:
-    # Preparar DataFrame de ativos
     df_ativos = reatores_processados[['nome_escola', 'id_reator', 'emissoes_evitadas_tco2eq']].copy()
     preco_carbono_reais = st.session_state.preco_carbono * st.session_state.taxa_cambio
     df_ativos['preco_unitario'] = preco_carbono_reais
     df_ativos['valor_total'] = df_ativos['emissoes_evitadas_tco2eq'] * df_ativos['preco_unitario']
     df_ativos['disponivel'] = True
 
-    # --- CALCULADORA DE NEUTRALIZAÇÃO PESSOAL ---
+    # --- CALCULADORA DE NEUTRALIZAÇÃO PESSOAL (AGRUPADA POR ESCOLA) ---
     st.subheader("🔌 Calcule sua necessidade de créditos")
     kwh_input = st.number_input("Digite seu consumo mensal (kWh):", min_value=0.0, value=0.0, step=1.0, format="%.0f")
     if kwh_input > 0:
         fator_emissao = 0.042  # kg CO2/kWh
         toneladas_necessarias = (kwh_input * fator_emissao) / 1000
-        st.info(f"Para **{kwh_input:.0f} kWh**, você precisa neutralizar **{toneladas_necessarias:.4f} tCO₂eq**.")
-        # Verificar quais escolas têm créditos suficientes
-        escolas_suficientes = df_ativos[df_ativos['emissoes_evitadas_tco2eq'] >= toneladas_necessarias]
+        st.info(f"Para **{kwh_input:.0f} kWh**, você precisa neutralizar **{formatar_br(toneladas_necessarias, 4)} tCO₂eq**.")
+        
+        # Agrupar créditos por escola (soma das emissões evitadas de todos os reatores)
+        creditos_por_escola = df_ativos.groupby('nome_escola')['emissoes_evitadas_tco2eq'].agg(['sum', 'count']).reset_index()
+        creditos_por_escola.columns = ['nome_escola', 'total_tco2eq', 'qtd_reatores']
+        
+        # Filtrar escolas com total >= necessidade
+        escolas_suficientes = creditos_por_escola[creditos_por_escola['total_tco2eq'] >= toneladas_necessarias]
+        
         if not escolas_suficientes.empty:
-            nomes = ", ".join([f"{row['nome_escola']} ({formatar_tco2eq(row['emissoes_evitadas_tco2eq'])})" for _, row in escolas_suficientes.iterrows()])
-            st.success(f"✅ **{len(escolas_suficientes)} escola(s)** têm créditos suficientes: {nomes}.")
+            lista_escolas = []
+            for _, row_esc in escolas_suficientes.iterrows():
+                nome = row_esc['nome_escola']
+                total = row_esc['total_tco2eq']
+                qtd = int(row_esc['qtd_reatores'])
+                lista_escolas.append(f"{nome} ({formatar_tco2eq(total)} em {qtd} reator{'es' if qtd > 1 else ''})")
+            st.success(f"✅ **{len(escolas_suficientes)} escola(s)** com créditos totais suficientes:\n" + "\n".join(f"- {item}" for item in lista_escolas))
         else:
-            st.warning(f"❌ Nenhuma escola tem créditos suficientes para {toneladas_necessarias:.4f} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores.")
+            st.warning(f"❌ Nenhuma escola possui créditos totais suficientes para {formatar_br(toneladas_necessarias, 4)} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores.")
     else:
         st.info("Digite seus kWh para descobrir quanto precisa compensar.")
 
@@ -711,7 +721,7 @@ if not reatores_processados.empty:
                 format="%.4f",
                 key=f"compra_{idx}_{row['id_reator']}"
             )
-            st.caption("Use as setas ou digite (passo 0,0001 t)")
+            st.caption("Use as setas ou digite (passo 0,0001 t)")  # mantido com ponto devido ao widget, mas texto orienta
 
             valor_compra = quantidade_comprar * row['preco_unitario']
             if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):
@@ -826,5 +836,5 @@ st.markdown("""
 - Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China  
 - Wang et al. (2017). N₂O emissions from landfills  
 - **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
-- GWP 20 anos: CH₄=79.7, N₂O=273 (IPCC AR6)
+- GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6)
 """)
