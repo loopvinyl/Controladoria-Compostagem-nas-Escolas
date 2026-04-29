@@ -183,6 +183,13 @@ def inicializar_session_state():
         st.session_state.periodo_credito = 10
     if 'k_ano' not in st.session_state:
         st.session_state.k_ano = K_ANO_PADRAO
+    # NOVAS INICIALIZAÇÕES PARA A BOLSA DE CARBONO
+    if 'carteira_r_virtual' not in st.session_state:
+        st.session_state.carteira_r_virtual = 10.0  # R$10 iniciais
+    if 'portfolio_creditos' not in st.session_state:
+        st.session_state.portfolio_creditos = {}
+    if 'historico_transacoes' not in st.session_state:
+        st.session_state.historico_transacoes = []
 
 # =============================================================================
 # CARREGAMENTO DOS DADOS REAIS
@@ -203,7 +210,11 @@ def carregar_dados_excel(url):
         if 'id_reator' in df_reatores.columns:
             df_reatores = df_reatores.dropna(subset=['id_reator'])
             df_reatores = df_reatores[df_reatores['id_reator'].astype(str).str.strip() != '']
+            # Remove duplicatas
+            df_reatores = df_reatores.drop_duplicates(subset=['id_reator'], keep='first')
         loading_placeholder.empty()
+
+        # Datas
         colunas_data_escolas = ['data_implantacao', 'ultima_visita']
         for col in colunas_data_escolas:
             if col in df_escolas.columns:
@@ -223,23 +234,45 @@ def carregar_dados_excel(url):
                 df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], dayfirst=True, errors='coerce')
             except:
                 df_gastos['data_compra'] = pd.to_datetime(df_gastos['data_compra'], errors='coerce')
+
+        # Tratamento de capacidade_total_sistema_litros nas escolas
         if 'capacidade_total_sistema_litros' in df_escolas.columns:
             df_escolas['capacidade_total_sistema_litros'] = pd.to_numeric(df_escolas['capacidade_total_sistema_litros'], errors='coerce')
-        dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
-        if all(col in df_reatores.columns for col in dimensoes_cols):
-            for col in dimensoes_cols:
-                df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
-            df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * 
-                                               df_reatores['largura_cm'] * 
-                                               df_reatores['comprimento_cm']) / 1000
-            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].round(2)
-            df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].fillna(100)
-            df_reatores['residuo_kg_estimado'] = df_reatores['capacidade_litros'] * DENSIDADE_PADRAO
-            df_reatores['residuo_kg_estimado'] = df_reatores['residuo_kg_estimado'].round(1)
+
+        # NOVA LÓGICA DE CAPACIDADE DOS REATORES
+        # Se existir 'volume_calculado_litros', usa-o; senão calcula por dimensões
+        if 'volume_calculado_litros' in df_reatores.columns:
+            df_reatores['volume_calculado_litros'] = pd.to_numeric(df_reatores['volume_calculado_litros'], errors='coerce')
+            dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
+            if all(col in df_reatores.columns for col in dimensoes_cols):
+                for col in dimensoes_cols:
+                    df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
+                calculado = (df_reatores['altura_cm'] * df_reatores['largura_cm'] * df_reatores['comprimento_cm']) / 1000
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros'].fillna(calculado)
+            else:
+                df_reatores['capacidade_litros'] = df_reatores['volume_calculado_litros'].fillna(100)
         else:
-            st.warning("⚠️ Colunas de dimensões não encontradas. Usando capacidade padrão de 100L para todos os reatores.")
-            df_reatores['capacidade_litros'] = 100
-            df_reatores['residuo_kg_estimado'] = 100 * DENSIDADE_PADRAO
+            dimensoes_cols = ['altura_cm', 'largura_cm', 'comprimento_cm']
+            if all(col in df_reatores.columns for col in dimensoes_cols):
+                for col in dimensoes_cols:
+                    df_reatores[col] = pd.to_numeric(df_reatores[col], errors='coerce')
+                df_reatores['capacidade_litros'] = (df_reatores['altura_cm'] * 
+                                                    df_reatores['largura_cm'] * 
+                                                    df_reatores['comprimento_cm']) / 1000
+            else:
+                df_reatores['capacidade_litros'] = 100
+
+        df_reatores['capacidade_litros'] = df_reatores['capacidade_litros'].round(2).fillna(100)
+
+        # NOVA LÓGICA DE PESO ESTIMADO
+        if 'peso_estimado_kg' in df_reatores.columns:
+            df_reatores['peso_estimado_kg'] = pd.to_numeric(df_reatores['peso_estimado_kg'], errors='coerce')
+            df_reatores['residuo_kg_estimado'] = df_reatores['peso_estimado_kg'].fillna(
+                df_reatores['capacidade_litros'] * DENSIDADE_PADRAO)
+        else:
+            df_reatores['residuo_kg_estimado'] = df_reatores['capacidade_litros'] * DENSIDADE_PADRAO
+        df_reatores['residuo_kg_estimado'] = df_reatores['residuo_kg_estimado'].round(1)
+
         return df_escolas, df_reatores, df_gastos
     except Exception as e:
         if 'loading_placeholder' in locals():
@@ -352,6 +385,9 @@ def calcular_emissoes_evitadas_reator(capacidade_litros):
 
 def processar_reatores_cheios(df_reatores, df_escolas):
     reatores_cheios = df_reatores[df_reatores['data_encheu'].notna()].copy()
+    # Remove reatores do tipo Líquido (coletores de chorume)
+    if 'tipo_caixa' in reatores_cheios.columns:
+        reatores_cheios = reatores_cheios[~reatores_cheios['tipo_caixa'].str.lower().str.contains('líquido|liquido')]
     if reatores_cheios.empty:
         return pd.DataFrame(), 0, 0, []
     resultados = []
@@ -442,7 +478,7 @@ with st.sidebar:
     **📊 Parâmetros de cálculo:**
     - Período: **{periodo_credito} anos**
     - Taxa de decaimento (k): **{formatar_br(k_ano, 3)} ano⁻¹**
-    - GWP: **20 anos** (CH₄=79.7, N₂O=273)
+    - GWP: **20 anos** (CH₄=79,7, N₂O=273)
     - φ (UNFCCC 2024): **{PHI_BASELINE}** (clima úmido)
     """)
     st.header("🔍 Filtros")
@@ -472,7 +508,7 @@ st.info(f"""
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L
 - **Período de cálculo:** {periodo_credito} anos
 - **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
-- **GWP:** 20 anos (CH₄=79.7, N₂O=273)
+- **GWP:** 20 anos (CH₄=79,7, N₂O=273)
 - ***Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
 """)
 
@@ -488,7 +524,7 @@ with col4:
 
 st.header("💰 Créditos de Carbono Computados - Sistema Real")
 if reatores_processados.empty:
-    st.info("ℹ️ Nenhum reator cheio encontrado.")
+    st.info("ℹ️ Nenhum reator cheio encontrado (ou todos são do tipo Líquido).")
 else:
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -601,6 +637,196 @@ if 'status' in df_escolas.columns:
 else:
     st.info("ℹ️ Coluna 'status' não encontrada")
 
+# =============================================================================
+# NOVA SEÇÃO: BOLSA DE VALORES DE CARBONO DAS ESCOLAS (R$ VIRTUAL)
+# =============================================================================
+
+st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
+
+st.markdown("""
+🌱 **Saiba quanto você precisa neutralizar:**  
+A matriz elétrica brasileira emite, em média, **0,0461 kg de CO₂eq por kWh**  
+([Fator Médio do SIN – MCTI/SIRENE, ano 2025](https://www.gov.br/mcti/pt-br/acompanhe-o-mcti/sirene/dados-e-ferramentas/fatores-de-emissao)).  
+Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,00461 tCO₂eq**.
+
+> 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,00922 tCO₂eq** para neutralizar seu impacto mensal.*
+""")
+
+col_saldo, col_disponivel = st.columns(2)
+with col_saldo:
+    st.metric("💰 Seu Saldo (R$ Virtual)", formatar_moeda_br(st.session_state.carteira_r_virtual))
+with col_disponivel:
+    creditos_em_carteira = sum(st.session_state.portfolio_creditos.values())
+    st.metric("🎯 Créditos em Carteira", formatar_tco2eq(creditos_em_carteira))
+
+if not reatores_processados.empty:
+    df_ativos = reatores_processados[['nome_escola', 'id_reator', 'emissoes_evitadas_tco2eq']].copy()
+    preco_carbono_reais = st.session_state.preco_carbono * st.session_state.taxa_cambio
+    df_ativos['preco_unitario'] = preco_carbono_reais
+    df_ativos['valor_total'] = df_ativos['emissoes_evitadas_tco2eq'] * df_ativos['preco_unitario']
+    df_ativos['disponivel'] = True
+
+    # --- CALCULADORA DE NEUTRALIZAÇÃO PESSOAL (AGRUPADA POR ESCOLA) ---
+    st.subheader("🔌 Calcule sua necessidade de créditos")
+    kwh_input = st.number_input("Digite seu consumo mensal (kWh):", min_value=0.0, value=0.0, step=1.0, format="%.0f")
+    if kwh_input > 0:
+        fator_emissao = 0.0461  # kg CO2/kWh (Fator Médio Anual SIN 2025)
+        toneladas_necessarias = (kwh_input * fator_emissao) / 1000
+        st.info(f"Para **{kwh_input:.0f} kWh**, você precisa neutralizar **{formatar_br(toneladas_necessarias, 4)} tCO₂eq**.")
+        
+        # Agrupar créditos por escola (soma das emissões evitadas de todos os reatores)
+        creditos_por_escola = df_ativos.groupby('nome_escola')['emissoes_evitadas_tco2eq'].agg(['sum', 'count']).reset_index()
+        creditos_por_escola.columns = ['nome_escola', 'total_tco2eq', 'qtd_reatores']
+        
+        # Filtrar escolas com total >= necessidade
+        escolas_suficientes = creditos_por_escola[creditos_por_escola['total_tco2eq'] >= toneladas_necessarias]
+        
+        if not escolas_suficientes.empty:
+            lista_escolas = []
+            for _, row_esc in escolas_suficientes.iterrows():
+                nome = row_esc['nome_escola']
+                total = row_esc['total_tco2eq']
+                qtd = int(row_esc['qtd_reatores'])
+                lista_escolas.append(f"{nome} ({formatar_tco2eq(total)} em {qtd} reator{'es' if qtd > 1 else ''})")
+            st.success(f"✅ **{len(escolas_suficientes)} escola(s)** com créditos totais suficientes:\n" + "\n".join(f"- {item}" for item in lista_escolas))
+        else:
+            st.warning(f"❌ Nenhuma escola possui créditos totais suficientes para {formatar_br(toneladas_necessarias, 4)} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores.")
+    else:
+        st.info("Digite seus kWh para descobrir quanto precisa compensar.")
+
+    st.markdown("---")
+    st.markdown("""
+    Use o campo **Qtd (tCO₂eq)** abaixo para adquirir essa quantidade de créditos das escolas. Cada crédito custa o valor de mercado do carbono convertido em reais.
+    """)
+
+    st.subheader("📊 Ativos Disponíveis para Compra (Créditos de Carbono por Reator)")
+
+    for idx, row in df_ativos.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 3])
+        with col1:
+            st.write(f"**{row['nome_escola']}**")
+            st.caption(f"Reator: {row['id_reator']}")
+        with col2:
+            st.metric("Créditos", formatar_tco2eq(row['emissoes_evitadas_tco2eq']))
+        with col3:
+            st.metric("Preço/tCO₂eq", formatar_moeda_br(row['preco_unitario']))
+        with col4:
+            st.metric("Valor Total", formatar_moeda_br(row['valor_total']))
+        with col5:
+            quantidade_comprar = st.number_input(
+                "Qtd (tCO₂eq)",
+                min_value=0.0,
+                max_value=float(row['emissoes_evitadas_tco2eq']),
+                value=0.0,
+                step=0.0001,
+                format="%.4f",
+                key=f"compra_{idx}_{row['id_reator']}"
+            )
+            st.caption("Use as setas ou digite (passo 0,0001 t)")
+
+            valor_compra = quantidade_comprar * row['preco_unitario']
+            if st.button("🛒 Comprar", key=f"btn_{idx}_{row['id_reator']}"):
+                if quantidade_comprar > 0:
+                    if st.session_state.carteira_r_virtual >= valor_compra:
+                        st.session_state.carteira_r_virtual -= valor_compra
+                        if row['id_reator'] in st.session_state.portfolio_creditos:
+                            st.session_state.portfolio_creditos[row['id_reator']] += quantidade_comprar
+                        else:
+                            st.session_state.portfolio_creditos[row['id_reator']] = quantidade_comprar
+                        st.session_state.historico_transacoes.append({
+                            'data': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                            'id_reator': row['id_reator'],
+                            'escola': row['nome_escola'],
+                            'quantidade_tco2eq': quantidade_comprar,
+                            'preco_unitario': row['preco_unitario'],
+                            'valor_total': valor_compra,
+                            'tipo': 'Compra'
+                        })
+                        st.success(f"✅ Compra realizada! Você adquiriu {formatar_tco2eq(quantidade_comprar)} da {row['nome_escola']}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Saldo insuficiente!")
+                else:
+                    st.warning("⚠️ Selecione uma quantidade maior que zero.")
+
+    st.subheader("📂 Seu Portfólio de Créditos de Carbono")
+    if st.session_state.portfolio_creditos:
+        portfolio_data = []
+        for id_reator, qtd in st.session_state.portfolio_creditos.items():
+            info = reatores_processados[reatores_processados['id_reator'] == id_reator].iloc[0]
+            portfolio_data.append({
+                'Escola': info['nome_escola'],
+                'Reator': id_reator,
+                'Créditos (tCO₂eq)': qtd,
+                'Preço Médio (R$/tCO₂eq)': preco_carbono_reais,
+                'Valor Atual (R$)': qtd * preco_carbono_reais
+            })
+        df_portfolio = pd.DataFrame(portfolio_data)
+        st.dataframe(df_portfolio, use_container_width=True)
+        fig_port = px.pie(df_portfolio, values='Créditos (tCO₂eq)', names='Escola',
+                          title='Distribuição da Carteira de Créditos')
+        st.plotly_chart(fig_port, use_container_width=True)
+    else:
+        st.info("Nenhum crédito em carteira. Compre créditos das escolas acima!")
+
+    st.subheader("📜 Histórico de Transações")
+    if st.session_state.historico_transacoes:
+        df_hist = pd.DataFrame(st.session_state.historico_transacoes)
+        df_hist_display = df_hist.copy()
+        df_hist_display['valor_total'] = df_hist_display['valor_total'].apply(lambda x: formatar_moeda_br(x))
+        df_hist_display['quantidade_tco2eq'] = df_hist_display['quantidade_tco2eq'].apply(lambda x: formatar_tco2eq(x))
+        st.dataframe(df_hist_display, use_container_width=True)
+    else:
+        st.info("Nenhuma transação realizada ainda.")
+
+    # =========================================================================
+    # GRÁFICO DO MERCADO – COTAÇÃO REAL CO2.L COM CONVERSÃO DATA A DATA
+    # =========================================================================
+    st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
+    try:
+        ticker_carbono = yf.Ticker("CO2.L")
+        hist = ticker_carbono.history(period="1mo")
+        if hist.empty:
+            raise ValueError("Sem dados históricos do CO2.L")
+
+        ticker_euro = yf.Ticker("EURBRL=X")
+        hist_euro = ticker_euro.history(period="1mo")
+        if hist_euro.empty:
+            raise ValueError("Sem dados históricos do EUR/BRL")
+
+        hist['Taxa_EURBRL'] = hist_euro['Close']
+        hist['Preço (R$/tCO₂eq)'] = hist['Close'] * hist['Taxa_EURBRL']
+
+        df_real = hist.reset_index()[['Date', 'Preço (R$/tCO₂eq)']]
+        df_real = df_real.rename(columns={'Date': 'Data'})
+
+        fig_merc = px.line(df_real, x='Data', y='Preço (R$/tCO₂eq)',
+                           title='Cotação Real do Carbono (CO2.L convertido pelo EUR/BRL diário)',
+                           markers=True)
+
+        ultimo_preco = df_real['Preço (R$/tCO₂eq)'].iloc[-1]
+        fig_merc.add_hline(y=ultimo_preco, line_dash="dash", line_color="red",
+                           annotation_text="Preço Atual")
+        st.plotly_chart(fig_merc, use_container_width=True)
+        st.caption("Fonte: Yahoo Finance (CO2.L e EURBRL=X) - Conversão data a data")
+    except Exception as e:
+        st.warning(f"Não foi possível obter o histórico real ({e}). Exibindo simulação de referência.")
+        datas = pd.date_range(start='2024-01-01', periods=30, freq='D')
+        preco_base = st.session_state.preco_carbono * st.session_state.taxa_cambio
+        np.random.seed(42)
+        variacao = np.random.normal(0, 0.02, 30).cumsum()
+        precos_sim = preco_base * (1 + variacao)
+        df_mercado = pd.DataFrame({'Data': datas, 'Preço (R$/tCO₂eq)': precos_sim})
+        fig_merc = px.line(df_mercado, x='Data', y='Preço (R$/tCO₂eq)',
+                           title='Simulação do Preço do Carbono nos Últimos 30 Dias',
+                           markers=True)
+        fig_merc.add_hline(y=preco_base, line_dash="dash", line_color="red",
+                           annotation_text="Preço Atual")
+        st.plotly_chart(fig_merc, use_container_width=True)
+
+else:
+    st.info("Nenhum crédito disponível para negociação. Aguarde reatores serem preenchidos.")
+
 st.markdown("---")
 st.markdown("""
 **♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
@@ -611,5 +837,5 @@ st.markdown("""
 - Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China  
 - Wang et al. (2017). N₂O emissions from landfills  
 - **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
-- GWP 20 anos: CH₄=79.7, N₂O=273 (IPCC AR6)
+- GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6)
 """)
