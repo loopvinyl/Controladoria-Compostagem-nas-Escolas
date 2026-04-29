@@ -20,8 +20,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Compostagem com Minhocas em Escolas de Ribeirão Preto ♻️")
-st.markdown("**Cálculo de Créditos de Carbono: Modelo Científico de Emissões para Resíduos Orgânicos**")
+st.title("♻️ Compostagem com Minhocas nas Escolas de Ribeirão Preto")
+st.markdown("**Cálculo de créditos de carbono baseado no modelo científico de emissões para resíduos orgânicos**")
 
 # =============================================================================
 # CONFIGURAÇÕES FIXAS
@@ -504,12 +504,12 @@ df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 # =============================================================================
 
 st.info(f"""
-**⚙️ Parâmetros de Cálculo (Distribuição Temporal com φ):**
-- **Densidade do Resíduo:** {DENSIDADE_PADRAO} kg/L
-- **Período de Cálculo:** {periodo_credito} anos
-- **Taxa de Decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
-- **Potencial de Aquecimento Global (GWP):** 20 anos (CH₄=79,7, N₂O=273)
-- **Fator φ (UNFCCC 2024):** {PHI_BASELINE} (aplicado apenas ao CH₄ do aterro)
+**⚙️ Parâmetros de Cálculo CORRIGIDOS - DISTRIBUIÇÃO TEMPORAL COM φ:**
+- **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L
+- **Período de cálculo:** {periodo_credito} anos
+- **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
+- **GWP:** 20 anos (CH₄=79,7, N₂O=273)
+- ***Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
 """)
 
 col1, col2, col3, col4 = st.columns(4)
@@ -522,9 +522,9 @@ with col3:
 with col4:
     st.metric("Reatores Ativos", formatar_br(len(df_reatores[df_reatores['status_reator'].notna()]), 0))
 
-st.header("Créditos de Carbono Computados (Sistema Real) 💰")
+st.header("💰 Créditos de Carbono Computados - Sistema Real")
 if reatores_processados.empty:
-    st.info("Nenhum reator cheio encontrado ou todos são do tipo Líquido. ℹ️")
+    st.info("ℹ️ Nenhum reator cheio encontrado (ou todos são do tipo Líquido).")
 else:
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -536,7 +536,7 @@ else:
     with col4:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
-st.header("Análise de Gastos 💰")
+st.header("💰 Análise de Gastos")
 if not df_gastos.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -548,7 +548,7 @@ if not df_gastos.empty:
             st.metric("Custo por tCO₂eq", formatar_moeda_br(total_gastos / total_emissoes))
         else:
             st.metric("Custo por tCO₂eq", formatar_moeda_br(0))
-    st.subheader("Detalhamento dos Gastos 📋")
+    st.subheader("📋 Detalhamento dos Gastos")
     df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor']].copy()
     if 'data_compra' in df_gastos_display.columns:
         df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce').dt.strftime('%d/%m/%Y')
@@ -560,9 +560,9 @@ if not df_gastos.empty:
         df_gastos_display = df_gastos_display.drop('valor_formatado', axis=1)
     st.dataframe(df_gastos_display, use_container_width=True)
 else:
-    st.info("Nenhum gasto registrado. ℹ️")
+    st.info("ℹ️ Nenhum gasto registrado.")
 
-st.header("Análise de Escolas com Reatores Ativos 🏫")
+st.header("🏫 Análise de Escolas Ativas com Reatores Ativos")
 escolas_com_reatores_ativos = analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores)
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -574,7 +574,7 @@ with col3:
     st.metric("Total de Reatores Ativos", formatar_br(escolas_com_reatores_ativos['reatores_ativos'].sum(), 0))
 
 if not reatores_processados.empty:
-    st.header("Detalhamento dos Créditos por Reator 📊")
+    st.header("📊 Detalhamento dos Créditos por Reator")
     preco_carbono_reais_por_tonelada = st.session_state.preco_carbono * st.session_state.taxa_cambio
     df_detalhes = reatores_processados[['nome_escola', 'id_reator', 'data_encheu', 'altura_cm', 'largura_cm', 'comprimento_cm',
                                         'capacidade_litros', 'residuo_kg', 'emissoes_evitadas_tco2eq']].copy()
@@ -588,11 +588,11 @@ if not reatores_processados.empty:
     df_detalhes['valor_creditos_reais'] = df_detalhes['valor_creditos_reais'].apply(lambda x: formatar_moeda_br(x))
     st.dataframe(df_detalhes, use_container_width=True)
 
-    st.header("Detalhamento Completo dos Cálculos 🧮")
+    st.header("🧮 Detalhamento Completo dos Cálculos")
     primeiro_reator = detalhes_calculo[0]
     calc = primeiro_reator['calculo_detalhado']
-    st.subheader(f"Cálculo Detalhado para o Reator {primeiro_reator["id_reator"]} 📋")
-    st.info(f"**Período de Cálculo:** {periodo_credito} anos | **Taxa de Decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹ | **Fator φ:** {PHI_BASELINE}")
+    st.subheader(f"📋 Cálculo Detalhado para o Reator {primeiro_reator['id_reator']}")
+    st.info(f"**Período de cálculo:** {periodo_credito} anos | **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹ | **φ = {PHI_BASELINE}**")
     col1, col2 = st.columns(2)
     with col1:
         st.write("**Dimensões e Massa:**")
@@ -613,7 +613,7 @@ if not reatores_processados.empty:
         st.write(f"- CO₂eq Compostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg")
         st.metric("Emissões Evitadas", formatar_tco2eq(calc['emissoes_evitadas_tco2eq']))
 
-st.header("Status dos Reatores 📈")
+st.header("📈 Status dos Reatores")
 if 'status_reator' in df_reatores.columns:
     status_count = df_reatores['status_reator'].value_counts()
     if not status_count.empty:
@@ -621,11 +621,11 @@ if 'status_reator' in df_reatores.columns:
         fig = px.pie(values=status_count.values, names=labels_formatados, title="Distribuição dos Status dos Reatores")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Sem dados de status para reatores. ℹ️")
+        st.info("ℹ️ Sem dados de status para reatores")
 else:
-    st.info("Coluna 'status_reator' não encontrada. ℹ️")
+    st.info("ℹ️ Coluna 'status_reator' não encontrada")
 
-st.header("Status das Escolas 🏫")
+st.header("🏫 Status das Escolas")
 if 'status' in df_escolas.columns:
     status_escolas_count = df_escolas['status'].value_counts()
     if not status_escolas_count.empty:
@@ -633,27 +633,24 @@ if 'status' in df_escolas.columns:
         fig2 = px.pie(values=status_escolas_count.values, names=labels_escolas_formatados, title="Distribuição dos Status das Escolas")
         st.plotly_chart(fig2, use_container_width=True)
     else:
-        st.info("Sem dados de status para escolas. ℹ️")
+        st.info("ℹ️ Sem dados de status para escolas")
 else:
-    st.info("Coluna 'status' não encontrada. ℹ️")
+    st.info("ℹ️ Coluna 'status' não encontrada")
 
 # =============================================================================
 # NOVA SEÇÃO: BOLSA DE VALORES DE CARBONO DAS ESCOLAS (R$ VIRTUAL)
 # =============================================================================
 
-st.header("Bolsa de Valores de Carbono Escolar (Simulação) 🏦")
+st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
 
 st.markdown("""
-**🌱 Saiba quanto você precisa neutralizar:**  
-A matriz elétrica brasileira emite, em média, **0,0461 kg de CO₂eq por kWh** [1].  
+🌱 **Saiba quanto você precisa neutralizar:**  
+A matriz elétrica brasileira emite, em média, **0,0461 kg de CO₂eq por kWh**  
+([Fator Médio do SIN – MCTI/SIRENE, ano 2025](https://www.gov.br/mcti/pt-br/acompanhe-o-mcti/sirene/dados-e-ferramentas/fatores-de-emissao)).  
 Assim, a cada **100 kWh** consumidos no mês, você gera aproximadamente **0,00461 tCO₂eq**.
 
-> 💡 *Exemplo: Se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,00922 tCO₂eq** para neutralizar seu impacto mensal.*
+> 💡 *Exemplo: se sua conta de luz marcou 200 kWh, você precisaria comprar cerca de **0,00922 tCO₂eq** para neutralizar seu impacto mensal.*
 """)
-
-# Referências
-
-[1] Fator Médio do SIN – MCTI/SIRENE, ano 2025: [https://www.gov.br/mcti/pt-br/acompanhe-o-mcti/sirene/dados-e-ferramentas/fatores-de-emissao](https://www.gov.br/mcti/pt-br/acompanhe-o-mcti/sirene/dados-e-ferramentas/fatores-de-emissao)
 
 col_saldo, col_disponivel = st.columns(2)
 with col_saldo:
@@ -670,7 +667,7 @@ if not reatores_processados.empty:
     df_ativos['disponivel'] = True
 
     # --- CALCULADORA DE NEUTRALIZAÇÃO PESSOAL (AGRUPADA POR ESCOLA) ---
-    st.subheader("Calcule sua Necessidade de Créditos 🔌")
+    st.subheader("🔌 Calcule sua necessidade de créditos")
     kwh_input = st.number_input("Digite seu consumo mensal (kWh):", min_value=0.0, value=0.0, step=1.0, format="%.0f")
     if kwh_input > 0:
         fator_emissao = 0.0461  # kg CO2/kWh (Fator Médio Anual SIN 2025)
@@ -691,9 +688,9 @@ if not reatores_processados.empty:
                 total = row_esc['total_tco2eq']
                 qtd = int(row_esc['qtd_reatores'])
                 lista_escolas.append(f"{nome} ({formatar_tco2eq(total)} em {qtd} reator{'es' if qtd > 1 else ''})")
-            st.success(f"**{len(escolas_suficientes)} escola(s)** com créditos totais suficientes: ✅\n" + "\n".join(f"- {item}" for item in lista_escolas))
+            st.success(f"✅ **{len(escolas_suficientes)} escola(s)** com créditos totais suficientes:\n" + "\n".join(f"- {item}" for item in lista_escolas))
         else:
-            st.warning(f"Nenhuma escola possui créditos totais suficientes para {formatar_br(toneladas_necessarias, 4)} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores. ❌")
+            st.warning(f"❌ Nenhuma escola possui créditos totais suficientes para {formatar_br(toneladas_necessarias, 4)} tCO₂eq. Você pode comprar uma quantidade menor ou aguardar novos reatores.")
     else:
         st.info("Digite seus kWh para descobrir quanto precisa compensar.")
 
@@ -702,7 +699,7 @@ if not reatores_processados.empty:
     Use o campo **Qtd (tCO₂eq)** abaixo para adquirir essa quantidade de créditos das escolas. Cada crédito custa o valor de mercado do carbono convertido em reais.
     """)
 
-    st.subheader("Ativos Disponíveis para Compra (Créditos de Carbono por Reator) 📊")
+    st.subheader("📊 Ativos Disponíveis para Compra (Créditos de Carbono por Reator)")
 
     for idx, row in df_ativos.iterrows():
         col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 3])
@@ -745,14 +742,14 @@ if not reatores_processados.empty:
                             'valor_total': valor_compra,
                             'tipo': 'Compra'
                         })
-                        st.success(f"Compra realizada! Você adquiriu {formatar_tco2eq(quantidade_comprar)} da {row["nome_escola"]}. ✅")
+                        st.success(f"✅ Compra realizada! Você adquiriu {formatar_tco2eq(quantidade_comprar)} da {row['nome_escola']}")
                         st.rerun()
                     else:
-                        st.error("Saldo insuficiente! ❌")
+                        st.error("❌ Saldo insuficiente!")
                 else:
-                    st.warning("Selecione uma quantidade maior que zero. ⚠️")
+                    st.warning("⚠️ Selecione uma quantidade maior que zero.")
 
-    st.subheader("Seu Portfólio de Créditos de Carbono 📂")
+    st.subheader("📂 Seu Portfólio de Créditos de Carbono")
     if st.session_state.portfolio_creditos:
         portfolio_data = []
         for id_reator, qtd in st.session_state.portfolio_creditos.items():
@@ -772,7 +769,7 @@ if not reatores_processados.empty:
     else:
         st.info("Nenhum crédito em carteira. Compre créditos das escolas acima!")
 
-    st.subheader("Histórico de Transações 📜")
+    st.subheader("📜 Histórico de Transações")
     if st.session_state.historico_transacoes:
         df_hist = pd.DataFrame(st.session_state.historico_transacoes)
         df_hist_display = df_hist.copy()
@@ -785,7 +782,7 @@ if not reatores_processados.empty:
     # =========================================================================
     # GRÁFICO DO MERCADO – COTAÇÃO REAL CO2.L COM CONVERSÃO DATA A DATA
     # =========================================================================
-    st.subheader("Cotação Real do Carbono - Últimos 30 Dias (CO2.L) 📈")
+    st.subheader("📈 Cotação Real do Carbono - Últimos 30 Dias (CO2.L)")
     try:
         ticker_carbono = yf.Ticker("CO2.L")
         hist = ticker_carbono.history(period="1mo")
@@ -832,21 +829,13 @@ else:
 
 st.markdown("---")
 st.markdown("""
-**Sistema de Compostagem com Minhocas - Ribeirão Preto/SP ♻️**  
+**♻️ Sistema de Compostagem com Minhocas - Ribeirão Preto/SP**  
 *Dados carregados de: [Controladoria-Compostagem-nas-Escolas](https://github.com/loopvinyl/Controladoria-Compostagem-nas-Escolas)*
 
 **📚 Referências Científicas:**  
-- IPCC (2006). *Guidelines for National Greenhouse Gas Inventories* [2].  
-- Yang et al. (2017). *Greenhouse gas emissions during MSW landfilling in China* [3].  
-- Wang et al. (2017). *N₂O emissions from landfills* [4].  
-- **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido** [5].  
-- GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6) [6].
+- IPCC (2006). Guidelines for National Greenhouse Gas Inventories  
+- Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China  
+- Wang et al. (2017). N₂O emissions from landfills  
+- **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
+- GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6)
 """)
-
-# Referências
-
-[2] IPCC (2006). Guidelines for National Greenhouse Gas Inventories.
-[3] Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China.
-[4] Wang et al. (2017). N₂O emissions from landfills.
-[5] UNFCCC (2024). Fator φ = 0,85 para baseline em clima úmido.
-[6] IPCC AR6. GWP 20 anos: CH₄=79,7, N₂O=273.
