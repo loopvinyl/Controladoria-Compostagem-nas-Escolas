@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 import numpy as np
+from io import BytesIO
 import math
 import yfinance as yf
 
@@ -410,17 +411,13 @@ def analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores):
         return escolas_ativas
 
 def analisar_gastos(df_gastos):
-    """Analisa os gastos registrados - ajustado para 'valor_total'"""
     if df_gastos.empty:
         return pd.DataFrame(), 0
-
-    # Agora a coluna se chama 'valor_total'
-    if 'valor_total' in df_gastos.columns:
-        df_gastos['valor_numerico'] = df_gastos['valor_total'].astype(str).str.replace('R\$', '', regex=True).str.replace(',', '.').str.strip()
+    if 'valor' in df_gastos.columns:
+        df_gastos['valor_numerico'] = df_gastos['valor'].astype(str).str.replace('R\$', '', regex=True).str.replace(',', '.').str.strip()
         df_gastos['valor_numerico'] = pd.to_numeric(df_gastos['valor_numerico'], errors='coerce')
         total_gastos = df_gastos['valor_numerico'].sum()
         return df_gastos, total_gastos
-
     return df_gastos, 0
 
 # =============================================================================
@@ -503,12 +500,7 @@ else:
     with col4:
         st.metric("Valor dos Créditos", formatar_moeda_br(valor_brl))
 
-# =============================================================================
-# ANÁLISE DE GASTOS (ATUALIZADA PARA 'valor_total')
-# =============================================================================
-
 st.header("💰 Análise de Gastos")
-
 if not df_gastos.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -520,28 +512,19 @@ if not df_gastos.empty:
             st.metric("Custo por tCO₂eq", formatar_moeda_br(total_gastos / total_emissoes))
         else:
             st.metric("Custo por tCO₂eq", formatar_moeda_br(0))
-
     st.subheader("📋 Detalhamento dos Gastos")
-    # Colunas esperadas: id_gasto, nome_gasto, data_compra, valor_total
-    df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor_total']].copy()
-    df_gastos_display.columns = ['ID Gasto', 'Nome', 'Data', 'Valor Total']
-
-    if 'data_compra' in df_gastos.columns:
-        df_gastos_display['Data'] = pd.to_datetime(df_gastos_display['Data'], errors='coerce')
-        df_gastos_display = df_gastos_display.sort_values('Data', ascending=True)
-        df_gastos_display['Data'] = df_gastos_display['Data'].dt.strftime('%d/%m/%Y')
-
-    df_gastos_display['Valor Total'] = df_gastos_display['Valor Total'].apply(
-        lambda x: formatar_moeda_br(float(str(x).replace('R$', '').replace(',', '.').strip()))
-        if pd.notna(x) and str(x).strip() != '' else formatar_moeda_br(0)
-    )
+    df_gastos_display = df_gastos[['id_gasto', 'nome_gasto', 'data_compra', 'valor']].copy()
+    if 'data_compra' in df_gastos_display.columns:
+        df_gastos_display['data_compra'] = pd.to_datetime(df_gastos_display['data_compra'], errors='coerce').dt.strftime('%d/%m/%Y')
+    if 'valor' in df_gastos_display.columns:
+        df_gastos_display['valor_formatado'] = df_gastos_display['valor'].astype(str).apply(
+            lambda x: formatar_moeda_br(float(x.replace('R$', '').replace(',', '.').strip())) if pd.notna(x) and x != '' else formatar_moeda_br(0)
+        )
+        df_gastos_display['valor'] = df_gastos_display['valor_formatado']
+        df_gastos_display = df_gastos_display.drop('valor_formatado', axis=1)
     st.dataframe(df_gastos_display, use_container_width=True)
 else:
-    st.info("ℹ️ Nenhum gasto registrado no sistema.")
-
-# =============================================================================
-# ANÁLISE DE ESCOLAS ATIVAS COM REATORES ATIVOS (mantida)
-# =============================================================================
+    st.info("ℹ️ Nenhum gasto registrado.")
 
 st.header("🏫 Análise de Escolas Ativas com Reatores Ativos")
 escolas_com_reatores_ativos = analisar_escolas_ativas_com_reatores_ativos(df_escolas, df_reatores)
@@ -553,10 +536,6 @@ with col2:
     st.metric("Escolas com Reatores Ativos", formatar_br(esc_com_reat, 0))
 with col3:
     st.metric("Total de Reatores Ativos", formatar_br(escolas_com_reatores_ativos['reatores_ativos'].sum(), 0))
-
-# =============================================================================
-# DETALHAMENTO DOS CRÉDITOS
-# =============================================================================
 
 if not reatores_processados.empty:
     st.header("📊 Detalhamento dos Créditos por Reator")
@@ -597,10 +576,6 @@ if not reatores_processados.empty:
         st.write(f"- N₂O: {formatar_br(calc['n2o_emitido_compostagem_periodo'], 5)} kg")
         st.write(f"- CO₂eq Compostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg")
         st.metric("Emissões Evitadas", formatar_tco2eq(calc['emissoes_evitadas_tco2eq']))
-
-# =============================================================================
-# GRÁFICOS
-# =============================================================================
 
 st.header("📈 Status dos Reatores")
 if 'status_reator' in df_reatores.columns:
