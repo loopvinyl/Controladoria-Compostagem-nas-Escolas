@@ -33,27 +33,39 @@ K_ANO_PADRAO = 0.06     # Taxa de decaimento anual padrão (IPCC para resíduos 
 PHI_BASELINE = 0.85     # Fator φ (UNFCCC 2024) para clima úmido
 
 # =============================================================================
-# FUNÇÕES DE FORMATAÇÃO BRASILEIRA
+# FUNÇÕES DE FORMATAÇÃO BRASILEIRA (AJUSTADAS: >=1 → 2 casas; <1 → 4 casas)
 # =============================================================================
 
-def formatar_br(numero, casas_decimais=2):
+def formatar_br(numero, casas_decimais=None):
+    """
+    Formata número no padrão brasileiro (ponto milhar, vírgula decimal).
+    Se casas_decimais for None, define automaticamente:
+        - valores >= 1: 2 casas decimais
+        - valores < 1: 4 casas decimais
+    """
     if numero is None or pd.isna(numero):
         return "N/A"
     try:
-        numero = round(float(numero), casas_decimais)
+        numero = float(numero)
+        if casas_decimais is None:
+            if abs(numero) >= 1:
+                casas_decimais = 2
+            else:
+                casas_decimais = 4
+        numero_arredondado = round(numero, casas_decimais)
         if casas_decimais == 0:
-            return f"{numero:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            return f"{numero_arredondado:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         else:
             formato = f"{{:,.{casas_decimais}f}}"
-            return formato.format(numero).replace(",", "X").replace(".", ",").replace("X", ".")
+            return formato.format(numero_arredondado).replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return "N/A"
 
-def formatar_moeda_br(valor, simbolo="R$", casas_decimais=2):
+def formatar_moeda_br(valor, simbolo="R$", casas_decimais=None):
     return f"{simbolo} {formatar_br(valor, casas_decimais)}"
 
 def formatar_tco2eq(valor):
-    return f"{formatar_br(valor, 3)} tCO₂eq"
+    return f"{formatar_br(valor)} tCO₂eq"
 
 # =============================================================================
 # FUNÇÕES DE COTAÇÃO DO CARBONO (YAHOO FINANCE + FALLBACK)
@@ -286,8 +298,13 @@ def carregar_dados_excel(url):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
-# FUNÇÕES DE CÁLCULO CIENTÍFICO – COM FATOR φ = 0,85
+# FUNÇÕES DE CÁLCULO CIENTÍFICO – COM FATOR φ = 0,85 E PRÉ-DESCARTE
 # =============================================================================
+
+# Parâmetros de pré-descarte (idênticos ao app.py)
+CH4_PRE_KG_POR_KG_DIA = 2.78 * (16/12) * 24 / 1_000_000_000   # kg CH4 / kg resíduo / dia
+N2O_PRE_TOTAL_KG_POR_KG = 20.26 * (44/28) / 1_000_000        # kg N2O / kg resíduo (total em 3 dias)
+PROFILE_N2O_PRE = {1: 0.8623, 2: 0.10, 3: 0.0377}            # distribuição diária do N2O pré-descarte
 
 def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=10):
     residuo_kg = capacidade_litros * DENSIDADE_PADRAO
@@ -310,6 +327,9 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     GWP_CH4_20 = 79.7
     GWP_N2O_20 = 273
 
+    # --- ATERRO (baseline) com modelo exponencial e pré-descarte ---
+    
+    # Potencial de metano (IPCC)
     potencial_CH4_por_kg_total = DOC * DOCf * MCF * F * (16/12) * (1 - Ri) * (1 - OX)
     ch4_total_aterro = residuo_kg * potencial_CH4_por_kg_total
 
@@ -320,9 +340,10 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     kernel_ch4 = np.exp(-k_dia * (t - 1)) - np.exp(-k_dia * t)
     kernel_ch4 = np.maximum(kernel_ch4, 0)
     ch4_emitido_aterro_bruto = ch4_total_aterro * kernel_ch4.sum()
-    ch4_emitido_aterro_periodo = ch4_emitido_aterro_bruto * phi
+    ch4_emitido_aterro_periodo = ch4_emitido_aterro_bruto * phi   # aplica φ apenas ao CH4 do aterro (não ao pré-descarte)
     fracao_ch4_emitida = kernel_ch4.sum()
 
+    # N2O do aterro (Wang et al. 2017)
     f_aberto = (massa_exposta_kg / residuo_kg) * (h_exposta / 24)
     f_aberto = np.clip(f_aberto, 0.0, 1.0)
     E_aberto = 1.91
@@ -333,13 +354,25 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     n2o_total_aterro = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
     kernel_n2o = np.array([0.10, 0.30, 0.40, 0.15, 0.05], dtype=float)
     kernel_n2o = kernel_n2o / kernel_n2o.sum()
-    n2o_emitido_aterro_periodo = n2o_total_aterro
+    n2o_emitido_aterro_periodo = n2o_total_aterro   # sem φ (o φ não se aplica ao N2O)
+    
+    # --- PRÉ-DESCARTE (adicionado ao aterro, conforme app.py) ---
+    # CH4 pré-descarte: constante durante os primeiros 3 dias
+    ch4_pre_total = residuo_kg * CH4_PRE_KG_POR_KG_DIA * 3   # 3 dias
+    # N2O pré-descarte: total distribuído conforme perfil
+    n2o_pre_total = residuo_kg * N2O_PRE_TOTAL_KG_POR_KG
+    
+    # Somar ao total do aterro (o pré-descarte não é multiplicado por φ)
+    ch4_emitido_aterro_periodo += ch4_pre_total
+    n2o_emitido_aterro_periodo += n2o_pre_total
 
+    # --- VERMICOMPOSTAGEM (sem pré-descarte, apenas processo) ---
     ch4_total_compostagem = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
     n2o_total_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
     ch4_emitido_compostagem_periodo = ch4_total_compostagem
     n2o_emitido_compostagem_periodo = n2o_total_compostagem
 
+    # Emissões em kg CO2eq
     emissao_aterro_kgco2eq = (ch4_emitido_aterro_periodo * GWP_CH4_20 + 
                               n2o_emitido_aterro_periodo * GWP_N2O_20)
     emissao_compostagem_kgco2eq = (ch4_emitido_compostagem_periodo * GWP_CH4_20 + 
@@ -351,8 +384,10 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
         'residuo_kg': residuo_kg,
         'ch4_total_aterro': ch4_total_aterro,
         'ch4_emitido_aterro_bruto': ch4_emitido_aterro_bruto,
+        'ch4_pre_descarte': ch4_pre_total,
         'ch4_emitido_aterro_periodo': ch4_emitido_aterro_periodo,
         'n2o_total_aterro': n2o_total_aterro,
+        'n2o_pre_descarte': n2o_pre_total,
         'n2o_emitido_aterro_periodo': n2o_emitido_aterro_periodo,
         'ch4_total_compostagem': ch4_total_compostagem,
         'n2o_total_compostagem': n2o_total_compostagem,
@@ -375,7 +410,9 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
             'GWP_CH4_20': GWP_CH4_20, 'GWP_N2O_20': GWP_N2O_20,
             'massa_exposta_kg': massa_exposta_kg, 'h_exposta': h_exposta,
             'f_aberto': f_aberto, 'E_medio': E_medio,
-            'E_medio_ajust': E_medio_ajust, 'fator_umid': fator_umid
+            'E_medio_ajust': E_medio_ajust, 'fator_umid': fator_umid,
+            'ch4_pre_dia_kg': CH4_PRE_KG_POR_KG_DIA,
+            'n2o_pre_total_kg': N2O_PRE_TOTAL_KG_POR_KG
         }
     }
 
@@ -457,7 +494,7 @@ def analisar_gastos(df_gastos):
     return df_gastos, 0
 
 # =============================================================================
-# INTERFACE PRINCIPAL
+# INTERFACE PRINCIPAL (mantida idêntica)
 # =============================================================================
 
 inicializar_session_state()
@@ -480,6 +517,7 @@ with st.sidebar:
     - Taxa de decaimento (k): **{formatar_br(k_ano, 3)} ano⁻¹**
     - GWP: **20 anos** (CH₄=79,7, N₂O=273)
     - φ (UNFCCC 2024): **{PHI_BASELINE}** (clima úmido)
+    - **Pré-descarte incluído** (CH₄ e N₂O nos 3 dias iniciais, conforme Feng et al. 2020)
     """)
     st.header("🔍 Filtros")
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
@@ -500,16 +538,17 @@ valor_brl = calcular_valor_creditos(total_emissoes, preco_carbono_eur, "R$", tax
 df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 
 # =============================================================================
-# EXIBIÇÃO
+# EXIBIÇÃO (mantida idêntica, exceto ajuste de texto)
 # =============================================================================
 
 st.info(f"""
-**⚙️ Parâmetros de Cálculo CORRIGIDOS - DISTRIBUIÇÃO TEMPORAL COM φ:**
+**⚙️ Parâmetros de Cálculo CORRIGIDOS - DISTRIBUIÇÃO TEMPORAL COM φ E PRÉ-DESCARTE:**
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L
 - **Período de cálculo:** {periodo_credito} anos
 - **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
 - **GWP:** 20 anos (CH₄=79,7, N₂O=273)
-- ***Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
+- **Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
+- **Pré-descarte:** incluído no aterro (CH₄ e N₂O primeiros 3 dias)
 """)
 
 col1, col2, col3, col4 = st.columns(4)
@@ -603,14 +642,14 @@ if not reatores_processados.empty:
         st.write(f"- Densidade: {formatar_br(calc['parametros']['densidade_kg_l'], 2)} kg/L")
         st.write(f"- Massa: {formatar_br(calc['residuo_kg'], 1)} kg")
     with col2:
-        st.write("**Emissões Aterro (com φ):**")
-        st.write(f"- CH₄ emitido: {formatar_br(calc['ch4_emitido_aterro_periodo'], 3)} kg")
-        st.write(f"- N₂O emitido: {formatar_br(calc['n2o_emitido_aterro_periodo'], 6)} kg")
-        st.write(f"- CO₂eq Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], 1)} kg")
-        st.write("**Emissões Compostagem:**")
-        st.write(f"- CH₄: {formatar_br(calc['ch4_emitido_compostagem_periodo'], 5)} kg")
-        st.write(f"- N₂O: {formatar_br(calc['n2o_emitido_compostagem_periodo'], 5)} kg")
-        st.write(f"- CO₂eq Compostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], 3)} kg")
+        st.write("**Emissões Aterro (com φ e pré-descarte):**")
+        st.write(f"- CH₄ (aterro + φ): {formatar_br(calc['ch4_emitido_aterro_periodo'], None)} kg")
+        st.write(f"- N₂O (aterro + pré-descarte): {formatar_br(calc['n2o_emitido_aterro_periodo'], None)} kg")
+        st.write(f"- CO₂eq Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], None)} kg")
+        st.write("**Emissões Vermicompostagem:**")
+        st.write(f"- CH₄: {formatar_br(calc['ch4_emitido_compostagem_periodo'], None)} kg")
+        st.write(f"- N₂O: {formatar_br(calc['n2o_emitido_compostagem_periodo'], None)} kg")
+        st.write(f"- CO₂eq Vermicompostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], None)} kg")
         st.metric("Emissões Evitadas", formatar_tco2eq(calc['emissoes_evitadas_tco2eq']))
 
 st.header("📈 Status dos Reatores")
@@ -638,7 +677,7 @@ else:
     st.info("ℹ️ Coluna 'status' não encontrada")
 
 # =============================================================================
-# NOVA SEÇÃO: BOLSA DE VALORES DE CARBONO DAS ESCOLAS (R$ VIRTUAL)
+# BOLSA DE VALORES DE CARBONO (mantida idêntica)
 # =============================================================================
 
 st.header("🏦 Bolsa de Valores de Carbono Escolar (Simulação)")
@@ -837,5 +876,6 @@ st.markdown("""
 - Yang et al. (2017). Greenhouse gas emissions during MSW landfilling in China  
 - Wang et al. (2017). N₂O emissions from landfills  
 - **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
+- **Pré‑descarte (CH₄ e N₂O) baseado em Feng et al. (2020)**  
 - GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6)
 """)
