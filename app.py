@@ -298,7 +298,7 @@ def carregar_dados_excel(url):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =============================================================================
-# FUNÇÕES DE CÁLCULO CIENTÍFICO – COM FATOR φ = 0,85 E PRÉ-DESCARTE
+# FUNÇÕES DE CÁLCULO CIENTÍFICO – COM PERFIS TEMPORAIS CORRIGIDOS
 # =============================================================================
 
 # Parâmetros de pré-descarte (idênticos ao app.py)
@@ -306,7 +306,40 @@ CH4_PRE_KG_POR_KG_DIA = 2.78 * (16/12) * 24 / 1_000_000_000   # kg CH4 / kg res�
 N2O_PRE_TOTAL_KG_POR_KG = 20.26 * (44/28) / 1_000_000        # kg N2O / kg resíduo (total em 3 dias)
 PROFILE_N2O_PRE = {1: 0.8623, 2: 0.10, 3: 0.0377}            # distribuição diária do N2O pré-descarte
 
+# Perfis diários de emissão para vermicompostagem (50 dias, normalizados)
+# Conforme Yang et al. 2017 e utilizados no app.py e Colab
+PROFILE_CH4_VERMI = np.array([
+    0.02, 0.02, 0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.05, 0.06,
+    0.07, 0.08, 0.09, 0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04,
+    0.03, 0.02, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01,
+    0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005,
+    0.002, 0.002, 0.002, 0.002, 0.002, 0.001, 0.001, 0.001, 0.001, 0.001
+])
+PROFILE_CH4_VERMI = PROFILE_CH4_VERMI / PROFILE_CH4_VERMI.sum()
+
+PROFILE_N2O_VERMI = np.array([
+    0.15, 0.10, 0.20, 0.05, 0.03, 0.03, 0.03, 0.04, 0.05, 0.06,
+    0.08, 0.09, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04, 0.03, 0.02,
+    0.01, 0.01, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005,
+    0.002, 0.002, 0.002, 0.002, 0.002, 0.001, 0.001, 0.001, 0.001, 0.001,
+    0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001
+])
+PROFILE_N2O_VERMI = PROFILE_N2O_VERMI / PROFILE_N2O_VERMI.sum()
+
+# Perfil diário de N2O para o aterro (Wang et al. 2017) – 5 dias
+PROFILE_N2O_LANDFILL_DAILY = np.array([0.10, 0.30, 0.40, 0.15, 0.05], dtype=float)
+PROFILE_N2O_LANDFILL_DAILY = PROFILE_N2O_LANDFILL_DAILY / PROFILE_N2O_LANDFILL_DAILY.sum()
+
 def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=10):
+    """
+    Calcula as emissões evitadas para um único reator (carga única).
+    Inclui:
+      - Aterro (baseline): CH₄ com decaimento exponencial (método FOD) + φ,
+        N₂O com perfil diário de 5 dias (Wang et al.) + pré‑descarte,
+      - Vermicompostagem: CH₄ e N₂O com perfis diários de 50 dias (Yang et al.),
+      - Pré‑descarte: CH₄ constante diária nos 3 dias, N₂O distribuído nos 3 dias.
+    Retorna dicionário com todos os valores intermediários e finais.
+    """
     residuo_kg = capacidade_litros * DENSIDADE_PADRAO
     T = 25
     DOC = 0.15
@@ -322,79 +355,101 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
     N2O_N_FRAC_YANG = 0.92 / 100
     umidade = 0.85
     fracao_ms = 1 - umidade
-    massa_exposta_kg = min(residuo_kg, 50)
-    h_exposta = 8
     GWP_CH4_20 = 79.7
     GWP_N2O_20 = 273
-
-    # --- ATERRO (baseline) com modelo exponencial e pré-descarte ---
-    
-    # Potencial de metano (IPCC)
-    potencial_CH4_por_kg_total = DOC * DOCf * MCF * F * (16/12) * (1 - Ri) * (1 - OX)
-    ch4_total_aterro = residuo_kg * potencial_CH4_por_kg_total
 
     k_ano_atual = st.session_state.get('k_ano', K_ANO_PADRAO)
     k_dia = k_ano_atual / 365.0
     dias_simulacao = periodo_anos * 365
     t = np.arange(1, dias_simulacao + 1, dtype=float)
+
+    # ==================== ATERRO (BASELINE) ====================
+
+    # --- CH₄ (FOD com kernel exponencial) ---
+    # Potencial total de CH₄ (kg) que poderia ser gerado se todo o resíduo fosse degradado
+    ch4_potencial_total = residuo_kg * DOC * DOCf * MCF * F * (16/12) * (1 - Ri) * (1 - OX)
+    # Fração emitida no período (soma do kernel exponencial)
     kernel_ch4 = np.exp(-k_dia * (t - 1)) - np.exp(-k_dia * t)
     kernel_ch4 = np.maximum(kernel_ch4, 0)
-    ch4_emitido_aterro_bruto = ch4_total_aterro * kernel_ch4.sum()
-    ch4_emitido_aterro_periodo = ch4_emitido_aterro_bruto * phi   # aplica φ apenas ao CH4 do aterro (não ao pré-descarte)
     fracao_ch4_emitida = kernel_ch4.sum()
+    ch4_emitido_periodo_bruto = ch4_potencial_total * fracao_ch4_emitida
+    ch4_emitido_aterro = ch4_emitido_periodo_bruto * phi   # aplica φ apenas ao CH4
 
-    # N2O do aterro (Wang et al. 2017)
-    f_aberto = (massa_exposta_kg / residuo_kg) * (h_exposta / 24)
+    # --- N₂O do aterro (Wang et al. 2017) com perfil diário ---
+    # Fator de abertura
+    f_aberto = (50.0 / residuo_kg) * (8.0 / 24)  # massa exposta ≈ 50 kg
     f_aberto = np.clip(f_aberto, 0.0, 1.0)
     E_aberto = 1.91
     E_fechado = 2.15
     E_medio = f_aberto * E_aberto + (1 - f_aberto) * E_fechado
     fator_umid = (1 - umidade) / (1 - 0.55)
     E_medio_ajust = E_medio * fator_umid
-    n2o_total_aterro = (E_medio_ajust * (44/28) / 1_000_000) * residuo_kg
-    kernel_n2o = np.array([0.10, 0.30, 0.40, 0.15, 0.05], dtype=float)
-    kernel_n2o = kernel_n2o / kernel_n2o.sum()
-    n2o_emitido_aterro_periodo = n2o_total_aterro   # sem φ (o φ não se aplica ao N2O)
-    
-    # --- PRÉ-DESCARTE (adicionado ao aterro, conforme app.py) ---
-    # CH4 pré-descarte: constante durante os primeiros 3 dias
-    ch4_pre_total = residuo_kg * CH4_PRE_KG_POR_KG_DIA * 3   # 3 dias
-    # N2O pré-descarte: total distribuído conforme perfil
+    fator_n2o_por_kg = (E_medio_ajust * (44/28) / 1_000_000)   # kg N2O / kg residuo
+    n2o_total_aterro = residuo_kg * fator_n2o_por_kg
+
+    # Convolução do pulso único com o kernel diário de 5 dias
+    pulse = np.zeros(dias_simulacao)
+    pulse[0] = n2o_total_aterro   # carga total no dia zero
+    n2o_aterro_diario = np.convolve(pulse, PROFILE_N2O_LANDFILL_DAILY, mode='full')[:dias_simulacao]
+    n2o_emitido_aterro = n2o_aterro_diario.sum()
+
+    # --- Pré‑descarte (CH₄ e N₂O) ---
+    # CH₄ pré-descarte: constante durante os 3 dias iniciais
+    ch4_pre_total = residuo_kg * CH4_PRE_KG_POR_KG_DIA * 3
+    # N₂O pré-descarte: total distribuído em 3 dias conforme perfil
     n2o_pre_total = residuo_kg * N2O_PRE_TOTAL_KG_POR_KG
-    
-    # Somar ao total do aterro (o pré-descarte não é multiplicado por φ)
-    ch4_emitido_aterro_periodo += ch4_pre_total
-    n2o_emitido_aterro_periodo += n2o_pre_total
+    # Distribuição sobre os dias (pulso único, mas distribuído)
+    n2o_pre_diario = np.zeros(dias_simulacao)
+    for atraso, frac in PROFILE_N2O_PRE.items():
+        idx = atraso - 1
+        if idx < dias_simulacao:
+            n2o_pre_diario[idx] += n2o_pre_total * frac
+    n2o_pre_emitido = n2o_pre_diario.sum()
 
-    # --- VERMICOMPOSTAGEM (sem pré-descarte, apenas processo) ---
-    ch4_total_compostagem = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
-    n2o_total_compostagem = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
-    ch4_emitido_compostagem_periodo = ch4_total_compostagem
-    n2o_emitido_compostagem_periodo = n2o_total_compostagem
+    # Somar pré‑descarte ao aterro (não multiplicado por φ)
+    ch4_emitido_aterro += ch4_pre_total
+    n2o_emitido_aterro += n2o_pre_emitido
 
-    # Emissões em kg CO2eq
-    emissao_aterro_kgco2eq = (ch4_emitido_aterro_periodo * GWP_CH4_20 + 
-                              n2o_emitido_aterro_periodo * GWP_N2O_20)
-    emissao_compostagem_kgco2eq = (ch4_emitido_compostagem_periodo * GWP_CH4_20 + 
-                                   n2o_emitido_compostagem_periodo * GWP_N2O_20)
+    # ==================== VERMICOMPOSTAGEM ====================
+    # Cálculo das emissões totais potenciais (kg) para o resíduo
+    ch4_potencial_vermi = residuo_kg * (TOC_YANG * CH4_C_FRAC_YANG * (16/12) * fracao_ms)
+    n2o_potencial_vermi = residuo_kg * (TN_YANG * N2O_N_FRAC_YANG * (44/28) * fracao_ms)
 
-    emissoes_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_compostagem_kgco2eq) / 1000
+    # Distribuição temporal com perfis diários de 50 dias
+    pulse_vermi = np.zeros(dias_simulacao)
+    pulse_vermi[0] = 1.0   # marcador para convolução
+    # Convolver cada perfil com o pulso unitário
+    ch4_vermi_diario = np.convolve(pulse_vermi, PROFILE_CH4_VERMI, mode='full')[:dias_simulacao]
+    n2o_vermi_diario = np.convolve(pulse_vermi, PROFILE_N2O_VERMI, mode='full')[:dias_simulacao]
+    # Multiplicar pelos fatores de emissão totais
+    ch4_vermi_diario *= ch4_potencial_vermi
+    n2o_vermi_diario *= n2o_potencial_vermi
+    ch4_emitido_vermi = ch4_vermi_diario.sum()
+    n2o_emitido_vermi = n2o_vermi_diario.sum()
 
+    # ==================== EMISSÕES EM CO₂eq ====================
+    emissao_aterro_kgco2eq = (ch4_emitido_aterro * GWP_CH4_20 +
+                              n2o_emitido_aterro * GWP_N2O_20)
+    emissao_vermi_kgco2eq = (ch4_emitido_vermi * GWP_CH4_20 +
+                             n2o_emitido_vermi * GWP_N2O_20)
+    emissoes_evitadas_tco2eq = (emissao_aterro_kgco2eq - emissao_vermi_kgco2eq) / 1000
+
+    # ==================== DICIONÁRIO DE SAÍDA (compatível com a interface original) ====================
     return {
         'residuo_kg': residuo_kg,
-        'ch4_total_aterro': ch4_total_aterro,
-        'ch4_emitido_aterro_bruto': ch4_emitido_aterro_bruto,
+        'ch4_total_aterro': ch4_potencial_total,
+        'ch4_emitido_aterro_bruto': ch4_emitido_periodo_bruto,
         'ch4_pre_descarte': ch4_pre_total,
-        'ch4_emitido_aterro_periodo': ch4_emitido_aterro_periodo,
+        'ch4_emitido_aterro_periodo': ch4_emitido_aterro,
         'n2o_total_aterro': n2o_total_aterro,
         'n2o_pre_descarte': n2o_pre_total,
-        'n2o_emitido_aterro_periodo': n2o_emitido_aterro_periodo,
-        'ch4_total_compostagem': ch4_total_compostagem,
-        'n2o_total_compostagem': n2o_total_compostagem,
-        'ch4_emitido_compostagem_periodo': ch4_emitido_compostagem_periodo,
-        'n2o_emitido_compostagem_periodo': n2o_emitido_compostagem_periodo,
+        'n2o_emitido_aterro_periodo': n2o_emitido_aterro,
+        'ch4_total_compostagem': ch4_potencial_vermi,
+        'n2o_total_compostagem': n2o_potencial_vermi,
+        'ch4_emitido_compostagem_periodo': ch4_emitido_vermi,
+        'n2o_emitido_compostagem_periodo': n2o_emitido_vermi,
         'emissao_aterro_kgco2eq': emissao_aterro_kgco2eq,
-        'emissao_compostagem_kgco2eq': emissao_compostagem_kgco2eq,
+        'emissao_compostagem_kgco2eq': emissao_vermi_kgco2eq,
         'emissoes_evitadas_tco2eq': emissoes_evitadas_tco2eq,
         'parametros': {
             'capacidade_litros': capacidade_litros,
@@ -408,7 +463,6 @@ def calcular_emissoes_evitadas_reator_detalhado(capacidade_litros, periodo_anos=
             'CH4_C_FRAC_YANG': CH4_C_FRAC_YANG, 'N2O_N_FRAC_YANG': N2O_N_FRAC_YANG,
             'umidade': umidade,
             'GWP_CH4_20': GWP_CH4_20, 'GWP_N2O_20': GWP_N2O_20,
-            'massa_exposta_kg': massa_exposta_kg, 'h_exposta': h_exposta,
             'f_aberto': f_aberto, 'E_medio': E_medio,
             'E_medio_ajust': E_medio_ajust, 'fator_umid': fator_umid,
             'ch4_pre_dia_kg': CH4_PRE_KG_POR_KG_DIA,
@@ -494,7 +548,7 @@ def analisar_gastos(df_gastos):
     return df_gastos, 0
 
 # =============================================================================
-# INTERFACE PRINCIPAL (mantida idêntica)
+# INTERFACE PRINCIPAL (mantida idêntica, exceto textos de correção)
 # =============================================================================
 
 inicializar_session_state()
@@ -518,6 +572,7 @@ with st.sidebar:
     - GWP: **20 anos** (CH₄=79,7, N₂O=273)
     - φ (UNFCCC 2024): **{PHI_BASELINE}** (clima úmido)
     - **Pré-descarte incluído** (CH₄ e N₂O nos 3 dias iniciais, conforme Feng et al. 2020)
+    - **Perfis temporais:** CH₄ aterro (exponencial), N₂O aterro (5 dias), vermicompostagem (50 dias)
     """)
     st.header("🔍 Filtros")
     escolas_options = ["Todas as escolas"] + df_escolas['id_escola'].tolist()
@@ -542,13 +597,14 @@ df_gastos_analisados, total_gastos = analisar_gastos(df_gastos)
 # =============================================================================
 
 st.info(f"""
-**⚙️ Parâmetros de Cálculo CORRIGIDOS - DISTRIBUIÇÃO TEMPORAL COM φ E PRÉ-DESCARTE:**
+**⚙️ Parâmetros de Cálculo CORRIGIDOS - DISTRIBUIÇÃO TEMPORAL COM φ E PERFIS DIÁRIOS:**
 - **Densidade do resíduo:** {DENSIDADE_PADRAO} kg/L
 - **Período de cálculo:** {periodo_credito} anos
 - **Taxa de decaimento (k):** {formatar_br(k_ano, 3)} ano⁻¹
 - **GWP:** 20 anos (CH₄=79,7, N₂O=273)
 - **Fator φ (UNFCCC 2024):** {PHI_BASELINE}* (aplicado apenas ao CH₄ do aterro)
 - **Pré-descarte:** incluído no aterro (CH₄ e N₂O primeiros 3 dias)
+- **Perfis temporais:** aterro (CH₄ exponencial / N₂O 5 dias); vermicompostagem (50 dias)
 """)
 
 col1, col2, col3, col4 = st.columns(4)
@@ -642,11 +698,11 @@ if not reatores_processados.empty:
         st.write(f"- Densidade: {formatar_br(calc['parametros']['densidade_kg_l'], 2)} kg/L")
         st.write(f"- Massa: {formatar_br(calc['residuo_kg'], 1)} kg")
     with col2:
-        st.write("**Emissões Aterro (com φ e pré-descarte):**")
+        st.write("**Emissões Aterro (com φ e perfis temporais):**")
         st.write(f"- CH₄ (aterro + φ): {formatar_br(calc['ch4_emitido_aterro_periodo'], None)} kg")
         st.write(f"- N₂O (aterro + pré-descarte): {formatar_br(calc['n2o_emitido_aterro_periodo'], None)} kg")
         st.write(f"- CO₂eq Aterro: {formatar_br(calc['emissao_aterro_kgco2eq'], None)} kg")
-        st.write("**Emissões Vermicompostagem:**")
+        st.write("**Emissões Vermicompostagem (perfil de 50 dias):**")
         st.write(f"- CH₄: {formatar_br(calc['ch4_emitido_compostagem_periodo'], None)} kg")
         st.write(f"- N₂O: {formatar_br(calc['n2o_emitido_compostagem_periodo'], None)} kg")
         st.write(f"- CO₂eq Vermicompostagem: {formatar_br(calc['emissao_compostagem_kgco2eq'], None)} kg")
@@ -877,5 +933,6 @@ st.markdown("""
 - Wang et al. (2017). N₂O emissions from landfills  
 - **Fator φ = 0,85 (UNFCCC, 2024) para baseline em clima úmido**  
 - **Pré‑descarte (CH₄ e N₂O) baseado em Feng et al. (2020)**  
+- **Perfis temporais:** aterro (CH₄ exponencial, N₂O 5 dias); vermicompostagem (50 dias)  
 - GWP 20 anos: CH₄=79,7, N₂O=273 (IPCC AR6)
 """)
